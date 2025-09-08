@@ -1,0 +1,270 @@
+# Veteran Job Scraper - Free Implementation
+# Based on JobSpy library for multi-platform scraping
+
+import json
+import csv
+import os
+from datetime import datetime, timedelta
+import time
+import re
+from pathlib import Path
+
+# First, you'll need to install JobSpy:
+# pip install python-jobspy
+
+try:
+    from jobspy import scrape_jobs
+    JOBSPY_AVAILABLE = True
+except ImportError:
+    print("JobSpy not installed. Install with: pip install python-jobspy")
+    JOBSPY_AVAILABLE = False
+
+class VeteranJobScraper:
+    def __init__(self):
+        self.data_dir = Path("data")
+        self.daily_dir = self.data_dir / "daily"
+        self.master_dir = self.data_dir / "master"
+        self.logs_dir = Path("logs")
+        
+        # Create directories
+        for dir_path in [self.daily_dir, self.master_dir, self.logs_dir]:
+            dir_path.mkdir(parents=True, exist_ok=True)
+        
+        # Veteran-specific keywords
+        self.veteran_keywords = [
+            "veteran", "military", "clearance", "security clearance",
+            "veteran friendly", "military experience", "veteran preferred",
+            "former military", "ex-military", "military background",
+            "veteran hiring", "military transition", "veteran owned"
+        ]
+        
+        # Job search terms
+        self.search_terms = [
+            "veteran preferred",
+            "military experience", 
+            "security clearance",
+            "veteran friendly"
+        ]
+    
+    def log_message(self, message):
+        """Simple logging function"""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log_entry = f"[{timestamp}] {message}\n"
+        
+        # Print to console
+        print(log_entry.strip())
+        
+        # Write to log file
+        log_file = self.logs_dir / f"scraper_{datetime.now().strftime('%Y-%m-%d')}.log"
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(log_entry)
+    
+    def has_veteran_keywords(self, text):
+        """Check if job description contains veteran-related keywords"""
+        if not text:
+            return []
+        
+        text_lower = text.lower()
+        found_keywords = []
+        
+        for keyword in self.veteran_keywords:
+            if keyword.lower() in text_lower:
+                found_keywords.append(keyword)
+        
+        return found_keywords
+    
+    def scrape_jobs_jobspy(self, max_jobs=50):
+        """Scrape jobs using JobSpy library"""
+        if not JOBSPY_AVAILABLE:
+            self.log_message("ERROR: JobSpy not available. Install with: pip install python-jobspy")
+            return []
+        
+        all_jobs = []
+        
+        # Scrape from multiple search terms
+        for search_term in self.search_terms:
+            self.log_message(f"Searching for: {search_term}")
+            
+            try:
+                # Scrape jobs (JobSpy is free!)
+                jobs = scrape_jobs(
+                    site_name=["linkedin", "indeed", "glassdoor"],  # Free sites
+                    search_term=search_term,
+                    location="United States",
+                    results_wanted=max_jobs // len(self.search_terms),  # Distribute across search terms
+                    hours_old=24,  # Only jobs from last 24 hours
+                    country_indeed='USA'
+                )
+                
+                if jobs is not None and len(jobs) > 0:
+                    # Convert to list of dictionaries
+                    job_list = jobs.to_dict('records')
+                    all_jobs.extend(job_list)
+                    self.log_message(f"Found {len(job_list)} jobs for '{search_term}'")
+                else:
+                    self.log_message(f"No jobs found for '{search_term}'")
+                
+                # Be polite - small delay between searches
+                time.sleep(2)
+                
+            except Exception as e:
+                self.log_message(f"Error scraping '{search_term}': {str(e)}")
+                continue
+        
+        return all_jobs
+    
+    def process_jobs(self, raw_jobs):
+        """Filter and process jobs for veteran relevance"""
+        veteran_jobs = []
+        
+        for job in raw_jobs:
+            # Check if job is veteran-related
+            title_keywords = self.has_veteran_keywords(job.get('title', ''))
+            desc_keywords = self.has_veteran_keywords(job.get('description', ''))
+            
+            # Combine all found keywords
+            all_keywords = list(set(title_keywords + desc_keywords))
+            
+            if all_keywords:  # Only include jobs with veteran keywords
+                processed_job = {
+                    'id': f"{job.get('site', 'unknown')}_{job.get('job_url_direct', 'unknown')}_{datetime.now().strftime('%Y%m%d')}",
+                    'title': job.get('title', 'Unknown'),
+                    'company': job.get('company', 'Unknown'),
+                    'location': job.get('location', 'Unknown'),
+                    'job_type': job.get('job_type', 'Unknown'),
+                    'salary_min': job.get('min_amount'),
+                    'salary_max': job.get('max_amount'),
+                    'description': job.get('description', '')[:500] + '...' if len(job.get('description', '')) > 500 else job.get('description', ''),
+                    'url': job.get('job_url_direct', job.get('job_url', '')),
+                    'source': job.get('site', 'unknown'),
+                    'veteran_keywords': all_keywords,
+                    'scraped_date': datetime.now().strftime('%Y-%m-%d'),
+                    'expires_on': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
+                }
+                veteran_jobs.append(processed_job)
+        
+        return veteran_jobs
+    
+    def save_daily_jobs(self, jobs):
+        """Save jobs to daily file"""
+        today = datetime.now().strftime('%Y-%m-%d')
+        filename = self.daily_dir / f"{today}.json"
+        
+        data = {
+            'scrape_date': today,
+            'expires_on': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d'),
+            'job_count': len(jobs),
+            'jobs': jobs
+        }
+        
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        
+        self.log_message(f"Saved {len(jobs)} veteran jobs to {filename}")
+        return filename
+    
+    def cleanup_old_files(self, days=30):
+        """Remove files older than specified days"""
+        cutoff_date = datetime.now() - timedelta(days=days)
+        removed_count = 0
+        
+        for file_path in self.daily_dir.glob("*.json"):
+            try:
+                # Extract date from filename (YYYY-MM-DD.json)
+                file_date_str = file_path.stem
+                file_date = datetime.strptime(file_date_str, '%Y-%m-%d')
+                
+                if file_date < cutoff_date:
+                    file_path.unlink()
+                    removed_count += 1
+                    self.log_message(f"Removed old file: {file_path}")
+            except (ValueError, OSError) as e:
+                self.log_message(f"Error processing file {file_path}: {e}")
+        
+        self.log_message(f"Cleanup complete. Removed {removed_count} old files.")
+    
+    def rebuild_master_file(self):
+        """Combine all daily files into master active jobs file"""
+        all_jobs = []
+        file_count = 0
+        
+        for file_path in sorted(self.daily_dir.glob("*.json")):
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    all_jobs.extend(data.get('jobs', []))
+                    file_count += 1
+            except (json.JSONDecodeError, OSError) as e:
+                self.log_message(f"Error reading {file_path}: {e}")
+        
+        # Remove duplicates based on job URL
+        unique_jobs = {}
+        for job in all_jobs:
+            url = job.get('url', '')
+            if url and url not in unique_jobs:
+                unique_jobs[url] = job
+        
+        master_data = {
+            'last_updated': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'date_range': f"{(datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')} to {datetime.now().strftime('%Y-%m-%d')}",
+            'total_jobs': len(unique_jobs),
+            'source_files': file_count,
+            'jobs': list(unique_jobs.values())
+        }
+        
+        master_file = self.master_dir / "active_jobs.json"
+        with open(master_file, 'w', encoding='utf-8') as f:
+            json.dump(master_data, f, indent=2, ensure_ascii=False)
+        
+        self.log_message(f"Master file updated: {len(unique_jobs)} unique jobs from {file_count} daily files")
+        return master_file
+    
+    def run_daily_scrape(self, max_jobs=50):
+        """Run the complete daily scraping process"""
+        self.log_message("=== Starting Daily Veteran Job Scrape ===")
+        
+        # 1. Scrape new jobs
+        self.log_message("Step 1: Scraping jobs...")
+        raw_jobs = self.scrape_jobs_jobspy(max_jobs)
+        
+        if not raw_jobs:
+            self.log_message("No jobs found. Exiting.")
+            return
+        
+        # 2. Filter for veteran jobs
+        self.log_message("Step 2: Filtering for veteran-related jobs...")
+        veteran_jobs = self.process_jobs(raw_jobs)
+        
+        if not veteran_jobs:
+            self.log_message("No veteran-related jobs found.")
+            return
+        
+        # 3. Save daily jobs
+        self.log_message("Step 3: Saving daily jobs...")
+        daily_file = self.save_daily_jobs(veteran_jobs)
+        
+        # 4. Cleanup old files
+        self.log_message("Step 4: Cleaning up old files...")
+        self.cleanup_old_files()
+        
+        # 5. Rebuild master file
+        self.log_message("Step 5: Rebuilding master file...")
+        master_file = self.rebuild_master_file()
+        
+        self.log_message(f"=== Daily scrape complete! ===")
+        self.log_message(f"Found {len(veteran_jobs)} veteran jobs")
+        self.log_message(f"Daily file: {daily_file}")
+        self.log_message(f"Master file: {master_file}")
+        
+        return veteran_jobs
+
+# Usage example
+if __name__ == "__main__":
+    scraper = VeteranJobScraper()
+    
+    # Run daily scrape
+    jobs = scraper.run_daily_scrape(max_jobs=50)
+    
+    if jobs:
+        print(f"\nSample job:")
+        print(json.dumps(jobs[0], indent=2))

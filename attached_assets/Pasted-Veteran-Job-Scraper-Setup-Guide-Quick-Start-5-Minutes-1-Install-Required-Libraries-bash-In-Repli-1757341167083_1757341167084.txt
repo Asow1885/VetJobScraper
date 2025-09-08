@@ -1,0 +1,173 @@
+Veteran Job Scraper Setup Guide
+Quick Start (5 Minutes)
+1. Install Required Libraries
+bash# In Replit terminal or your local environment
+pip install python-jobspy pandas requests beautifulsoup4
+2. Create Project Structure
+The scraper will automatically create these folders:
+/veteran_job_scraper/
+├── data/
+│   ├── daily/          # Daily job files (auto-cleanup after 30 days)
+│   └── master/         # Combined active jobs file
+├── logs/               # System logs
+└── src/                # Your Python files
+3. Run Your First Scrape
+pythonfrom veteran_job_scraper import VeteranJobScraper
+
+scraper = VeteranJobScraper()
+jobs = scraper.run_daily_scrape(max_jobs=50)
+How It Works
+Free Job Sources
+
+LinkedIn - Public job listings (no login required)
+Indeed - Unlimited scraping capability
+Glassdoor - Public job data
+Google Jobs - Aggregated listings
+
+Veteran Job Detection
+The scraper automatically finds jobs with these keywords:
+
+"veteran", "military", "clearance", "security clearance"
+"veteran friendly", "military experience", "veteran preferred"
+"former military", "ex-military", "military background"
+"veteran hiring", "military transition", "veteran owned"
+
+Data Management
+
+Daily Files: Each day's scrape saved separately
+30-Day Auto-Cleanup: Old files automatically deleted
+Master File: Combined view of all active jobs for your app
+Duplicate Removal: Same job from multiple sources = one entry
+
+File Outputs
+Daily Job File (data/daily/2024-09-08.json)
+json{
+  "scrape_date": "2024-09-08",
+  "expires_on": "2024-10-08",
+  "job_count": 23,
+  "jobs": [
+    {
+      "id": "linkedin_12345_20240908",
+      "title": "Software Engineer - Veterans Preferred",
+      "company": "TechVet Solutions",
+      "location": "Remote",
+      "job_type": "fulltime",
+      "salary_min": 85000,
+      "salary_max": 120000,
+      "description": "Looking for veterans with software development experience...",
+      "url": "https://linkedin.com/jobs/view/12345",
+      "source": "linkedin",
+      "veteran_keywords": ["veterans preferred", "military experience"],
+      "scraped_date": "2024-09-08",
+      "expires_on": "2024-10-08"
+    }
+  ]
+}
+Master File (data/master/active_jobs.json)
+json{
+  "last_updated": "2024-09-08 10:30:00",
+  "date_range": "2024-08-09 to 2024-09-08",
+  "total_jobs": 1247,
+  "source_files": 30,
+  "jobs": [/* all unique jobs from last 30 days */]
+}
+Your App Integration
+Simple Integration
+pythonimport json
+
+# Your app just reads this file
+with open('data/master/active_jobs.json', 'r') as f:
+    job_data = json.load(f)
+
+print(f"Total veteran jobs available: {job_data['total_jobs']}")
+for job in job_data['jobs'][:5]:  # Show first 5
+    print(f"- {job['title']} at {job['company']}")
+Customization Options
+Adjust Search Terms
+pythonscraper = VeteranJobScraper()
+# Add your own search terms
+scraper.search_terms = [
+    "veteran preferred",
+    "military clearance", 
+    "former military",
+    "security clearance required"
+]
+Change Job Sources
+python# In the scrape_jobs_jobspy method, modify:
+jobs = scrape_jobs(
+    site_name=["indeed", "glassdoor"],  # Remove LinkedIn if needed
+    search_term=search_term,
+    location="United States",
+    results_wanted=25
+)
+Adjust Retention Period
+python# Change from 30 days to 60 days
+scraper.cleanup_old_files(days=60)
+Manual Operations
+Run One-Time Scrape
+pythonscraper = VeteranJobScraper()
+jobs = scraper.run_daily_scrape(max_jobs=20)  # Smaller test run
+Manual Cleanup
+pythonscraper = VeteranJobScraper()
+scraper.cleanup_old_files(days=7)  # Remove files older than 7 days
+Rebuild Master File
+pythonscraper = VeteranJobScraper()
+scraper.rebuild_master_file()  # Recreate master file from all daily files
+Scheduling (Optional)
+Daily Automation in Replit
+Create a file called scheduler.py:
+pythonimport schedule
+import time
+from veteran_job_scraper import VeteranJobScraper
+
+def daily_job():
+    scraper = VeteranJobScraper()
+    scraper.run_daily_scrape(max_jobs=50)
+
+# Run every day at 9 AM
+schedule.every().day.at("09:00").do(daily_job)
+
+while True:
+    schedule.run_pending()
+    time.sleep(3600)  # Check every hour
+Troubleshooting
+Common Issues
+1. "JobSpy not installed"
+bashpip install python-jobspy
+2. No jobs found
+
+Check your internet connection
+Try different search terms
+Some job sites may be temporarily blocking requests
+
+3. Too many requests error
+
+The scraper includes delays to be polite
+If you get blocked, wait a few hours and try again
+
+4. Memory issues with large scrapes
+
+Reduce max_jobs parameter
+Run scraper more frequently with smaller batches
+
+Performance Tips
+
+Start small: Try max_jobs=10 first
+Monitor logs: Check the daily log files for errors
+Test search terms: Some keywords work better than others
+Be patient: Quality job data takes time to accumulate
+
+Cost Analysis: $0
+✅ JobSpy: Free and open source
+✅ Python libraries: Free
+✅ Job board access: Public data only
+✅ Storage: Local files (no cloud costs)
+✅ No API limits: Unlike paid services
+Next Steps
+
+Test the basic scraper (run the artifact code)
+Customize keywords for your specific veteran job needs
+Set up daily automation if desired
+Integrate with your job board app
+
+Ready to start scraping? Run the code and let me know what you find!
