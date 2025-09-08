@@ -80,8 +80,8 @@ export function JobsTable() {
   const [statusFilter, setStatusFilter] = useState("");
   
   const { data: jobs = [], isLoading } = useJobs({
-    source: sourceFilter || undefined,
-    status: statusFilter || undefined,
+    source: sourceFilter && sourceFilter !== 'all' ? sourceFilter : undefined,
+    status: statusFilter && statusFilter !== 'all' ? statusFilter : undefined,
     limit: 10
   });
 
@@ -115,7 +115,7 @@ export function JobsTable() {
                 <SelectValue placeholder="All Sources" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Sources</SelectItem>
+                <SelectItem value="all">All Sources</SelectItem>
                 <SelectItem value="linkedin">LinkedIn</SelectItem>
                 <SelectItem value="indeed">Indeed</SelectItem>
                 <SelectItem value="glassdoor">Glassdoor</SelectItem>

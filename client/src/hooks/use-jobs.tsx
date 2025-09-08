@@ -23,6 +23,7 @@ export function useJobs(params: UseJobsParams = {}) {
 
   return useQuery<Job[]>({
     queryKey: ['/api/jobs', params],
+    queryFn: () => fetch(url).then(res => res.json()),
     refetchInterval: 60000, // Refetch every minute
   });
 }
@@ -30,6 +31,7 @@ export function useJobs(params: UseJobsParams = {}) {
 export function useJob(id: string) {
   return useQuery<Job>({
     queryKey: ["/api/jobs", id],
+    queryFn: () => fetch(`/api/jobs/${id}`).then(res => res.json()),
     enabled: !!id,
   });
 }
