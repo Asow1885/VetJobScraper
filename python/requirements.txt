@@ -1,0 +1,7 @@
+python-jobspy
+pandas
+requests
+beautifulsoup4
+selenium
+scrapy
+lxml
