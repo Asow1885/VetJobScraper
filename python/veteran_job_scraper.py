@@ -21,9 +21,9 @@ except ImportError as e:
     # Return empty array if JobSpy not available instead of exiting
     JOBSPY_AVAILABLE = False
 
-class VeteranJobScraper:
+class JobScraper:
     def __init__(self):
-        # Veteran-specific keywords
+        # Veteran-friendly indicator keywords (used to flag jobs, not filter)
         self.veteran_keywords = [
             "veteran", "military", "clearance", "security clearance",
             "veteran friendly", "military experience", "veteran preferred",
@@ -31,12 +31,24 @@ class VeteranJobScraper:
             "veteran hiring", "military transition", "veteran owned"
         ]
         
-        # Job search terms
+        # General job search terms for broader coverage
         self.search_terms = [
-            "veteran preferred",
-            "military experience", 
-            "security clearance",
-            "veteran friendly"
+            "software engineer",
+            "data analyst", 
+            "project manager",
+            "customer service",
+            "sales representative",
+            "marketing specialist"
+        ]
+        
+        # International locations to search
+        self.locations = [
+            "United States",
+            "Canada", 
+            "United Kingdom",
+            "Germany",
+            "Australia",
+            "Remote"
         ]
     
     def has_veteran_keywords(self, text):
@@ -63,65 +75,74 @@ class VeteranJobScraper:
         
         all_jobs = []
         
-        # Scrape from multiple search terms
-        for search_term in self.search_terms:
-            try:
-                # Scrape jobs (JobSpy is free!)
-                jobs = scrape_jobs(
-                    site_name=["linkedin", "indeed", "glassdoor"],  # Free sites
-                    search_term=search_term,
-                    location="United States",
-                    results_wanted=max_jobs // len(self.search_terms),  # Distribute across search terms
-                    hours_old=24,  # Only jobs from last 24 hours
-                    country_indeed='USA'
-                )
-                
-                if jobs is not None and len(jobs) > 0:
-                    # Convert to list of dictionaries
-                    job_list = jobs.to_dict('records')
-                    all_jobs.extend(job_list)
-                
-            except Exception as e:
-                print(f"Error scraping '{search_term}': {str(e)}", file=sys.stderr)
-                continue
+        # Scrape from multiple search terms and locations
+        jobs_per_search = max(1, max_jobs // (len(self.search_terms) * len(self.locations)))
+        
+        for search_term in self.search_terms[:2]:  # Limit to first 2 search terms for efficiency
+            for location in self.locations[:3]:  # Limit to first 3 locations
+                try:
+                    # Set country for Indeed based on location
+                    country_param = 'USA' if location == "United States" else 'USA'  # Default to USA for now
+                    
+                    # Scrape jobs (JobSpy is free!)
+                    jobs = scrape_jobs(
+                        site_name=["linkedin", "indeed"],  # Focus on main sites
+                        search_term=search_term,
+                        location=location,
+                        results_wanted=jobs_per_search,
+                        hours_old=72,  # Last 3 days for better results
+                        country_indeed=country_param
+                    )
+                    
+                    if jobs is not None and len(jobs) > 0:
+                        # Convert to list of dictionaries
+                        job_list = jobs.to_dict('records')
+                        all_jobs.extend(job_list)
+                    
+                except Exception as e:
+                    print(f"Error scraping '{search_term}' in '{location}': {str(e)}", file=sys.stderr)
+                    continue
         
         return all_jobs
     
     def process_jobs(self, raw_jobs):
-        """Filter and process jobs for veteran relevance"""
-        veteran_jobs = []
+        """Process all jobs and add veteran-friendly indicator"""
+        processed_jobs = []
         
         for job in raw_jobs:
-            # Check if job is veteran-related
+            # Check if job has veteran-friendly keywords (for indicator, not filtering)
             title_keywords = self.has_veteran_keywords(job.get('title', ''))
             desc_keywords = self.has_veteran_keywords(job.get('description', ''))
             
             # Combine all found keywords
             all_keywords = list(set(title_keywords + desc_keywords))
+            is_veteran_friendly = len(all_keywords) > 0
             
-            if all_keywords:  # Only include jobs with veteran keywords
-                processed_job = {
-                    'title': job.get('title', 'Unknown'),
-                    'company': job.get('company', 'Unknown'),
-                    'location': job.get('location', 'Unknown'),
-                    'job_type': job.get('job_type', 'Unknown'),
-                    'salary_min': job.get('min_amount'),
-                    'salary_max': job.get('max_amount'),
-                    'description': job.get('description', '')[:1000] if job.get('description') else '',  # Limit description length
-                    'url': job.get('job_url_direct', job.get('job_url', '')),
-                    'source': job.get('site', 'unknown'),
-                    'veteran_keywords': all_keywords,
-                    'scraped_date': datetime.now().isoformat(),
-                    'expires_on': (datetime.now() + timedelta(days=30)).isoformat(),
-                    'metadata': {
-                        'date_posted': job.get('date_posted'),
-                        'compensation': job.get('compensation'),
-                        'benefits': job.get('benefits')
-                    }
+            # Process ALL jobs, not just veteran ones
+            processed_job = {
+                'title': job.get('title', 'Unknown'),
+                'company': job.get('company', 'Unknown'),
+                'location': job.get('location', 'Unknown'),
+                'job_type': job.get('job_type', 'full-time'),
+                'salary_min': job.get('min_amount'),
+                'salary_max': job.get('max_amount'),
+                'description': job.get('description', '')[:1000] if job.get('description') else '',  # Limit description length
+                'url': job.get('job_url_direct', job.get('job_url', '')),
+                'source': job.get('site', 'unknown'),
+                'veteran_keywords': all_keywords,  # Empty if no veteran keywords
+                'is_veteran_friendly': is_veteran_friendly,  # Boolean indicator
+                'scraped_date': datetime.now().isoformat(),
+                'expires_on': (datetime.now() + timedelta(days=30)).isoformat(),
+                'metadata': {
+                    'date_posted': job.get('date_posted'),
+                    'compensation': job.get('compensation'),
+                    'benefits': job.get('benefits'),
+                    'veteran_friendly': is_veteran_friendly
                 }
-                veteran_jobs.append(processed_job)
+            }
+            processed_jobs.append(processed_job)
         
-        return veteran_jobs
+        return processed_jobs
     
     def run_scraping(self, max_jobs=50):
         """Run the complete scraping process and return JSON"""
@@ -135,18 +156,18 @@ class VeteranJobScraper:
         if not raw_jobs:
             return []
         
-        # 2. Filter for veteran jobs
-        veteran_jobs = self.process_jobs(raw_jobs)
+        # 2. Process all jobs and add veteran indicator
+        processed_jobs = self.process_jobs(raw_jobs)
         
-        return veteran_jobs
+        return processed_jobs
 
 def main():
-    parser = argparse.ArgumentParser(description='Veteran Job Scraper')
+    parser = argparse.ArgumentParser(description='International Job Scraper with Veteran Indicator')
     parser.add_argument('--max-jobs', type=int, default=50, help='Maximum number of jobs to scrape')
     
     args = parser.parse_args()
     
-    scraper = VeteranJobScraper()
+    scraper = JobScraper()
     jobs = scraper.run_scraping(args.max_jobs)
     
     # Output JSON to stdout for Node.js to consume
