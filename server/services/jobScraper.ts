@@ -25,8 +25,9 @@ class JobScraperService {
 
       const pythonScriptPath = path.join(process.cwd(), "python", "veteran_job_scraper.py");
       
-      const pythonProcess = spawn("python3", [pythonScriptPath, "--max-jobs", maxJobs.toString()], {
-        stdio: ["pipe", "pipe", "pipe"]
+      const pythonProcess = spawn("/nix/store/7hnr99nxrd2aw6lghybqdmkckq60j6l9-python3-3.11.9/bin/python3", [pythonScriptPath, "--max-jobs", maxJobs.toString()], {
+        stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env, PYTHONPATH: process.cwd() + "/.pythonlibs/lib/python3.11/site-packages:" + (process.env.PYTHONPATH || "") }
       });
 
       let output = "";

@@ -8,12 +8,18 @@ import argparse
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'attached_assets'))
 
 try:
+    import sys
+    import os
+    # Add the .pythonlibs to the path
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.join(project_root, ".pythonlibs", "lib", "python3.11", "site-packages"))
+    
     from jobspy import scrape_jobs
     JOBSPY_AVAILABLE = True
-except ImportError:
-    print("JobSpy not installed. Install with: pip install python-jobspy", file=sys.stderr)
+except ImportError as e:
+    print(f"JobSpy import error: {e}", file=sys.stderr)
+    # Return empty array if JobSpy not available instead of exiting
     JOBSPY_AVAILABLE = False
-    sys.exit(1)
 
 class VeteranJobScraper:
     def __init__(self):
@@ -51,6 +57,9 @@ class VeteranJobScraper:
         """Scrape jobs using JobSpy library"""
         if not JOBSPY_AVAILABLE:
             return []
+        
+        # Import here to avoid unbound variable warning
+        from jobspy import scrape_jobs
         
         all_jobs = []
         
@@ -116,6 +125,10 @@ class VeteranJobScraper:
     
     def run_scraping(self, max_jobs=50):
         """Run the complete scraping process and return JSON"""
+        if not JOBSPY_AVAILABLE:
+            # Return empty array if JobSpy not available
+            return []
+        
         # 1. Scrape new jobs
         raw_jobs = self.scrape_jobs_jobspy(max_jobs)
         
