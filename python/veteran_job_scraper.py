@@ -31,25 +31,63 @@ class JobScraper:
             "veteran hiring", "military transition", "veteran owned"
         ]
         
-        # General job search terms for broader coverage
+        # Comprehensive job search terms for broader international coverage
         self.search_terms = [
-            "software engineer",
-            "data analyst", 
-            "project manager",
-            "customer service",
-            "sales representative",
-            "marketing specialist"
+            # Technology roles
+            "software engineer", "full stack developer", "frontend developer", 
+            "backend developer", "devops engineer", "data scientist", "data analyst",
+            "machine learning engineer", "cloud engineer", "cybersecurity specialist",
+            "mobile developer", "web developer", "QA engineer", "ui ux designer",
+            
+            # Business roles  
+            "project manager", "product manager", "business analyst", "scrum master",
+            "marketing manager", "digital marketing", "sales representative", "account manager",
+            "operations manager", "hr specialist", "finance analyst", "consultant",
+            
+            # Healthcare & Education
+            "nurse", "healthcare assistant", "teacher", "education coordinator",
+            "medical technician", "therapist",
+            
+            # Customer service & Support
+            "customer service", "technical support", "help desk", "call center",
+            
+            # Trade & Manufacturing
+            "maintenance technician", "warehouse worker", "logistics coordinator",
+            "manufacturing supervisor", "quality control",
+            
+            # Remote-first opportunities
+            "remote", "work from home", "virtual assistant", "online tutor"
         ]
         
-        # International locations to search
+        # Comprehensive international locations for broader coverage
         self.locations = [
-            "United States",
-            "Canada", 
-            "United Kingdom",
-            "Germany",
-            "Australia",
-            "Remote"
+            # English-speaking markets
+            "United States", "Canada", "United Kingdom", "Australia", "New Zealand", "Ireland",
+            
+            # Major European markets
+            "Germany", "France", "Netherlands", "Sweden", "Norway", "Denmark", "Switzerland",
+            "Austria", "Belgium", "Finland", "Spain", "Italy", "Portugal",
+            
+            # Asia-Pacific regions
+            "Singapore", "Hong Kong", "Japan", "South Korea", 
+            
+            # Emerging markets
+            "India", "Israel", "United Arab Emirates",
+            
+            # Remote/flexible work
+            "Remote", "Worldwide Remote", "Europe Remote", "Americas Remote"
         ]
+        
+        # Optimized scraping configuration
+        self.scraping_config = {
+            "max_sites_per_search": 2,  # LinkedIn + Indeed (most reliable)
+            "max_search_terms": 4,      # Limit search terms to avoid rate limits
+            "max_locations": 3,         # Limit locations per run
+            "jobs_per_combination": 2,  # Small batches to avoid blocks
+            "hours_old_limit": 168,     # 1 week for better results
+            "retry_attempts": 2,        # Retry failed requests
+            "delay_between_requests": 1 # Second delay between requests
+        }
     
     def has_veteran_keywords(self, text):
         """Check if job description contains veteran-related keywords"""
@@ -75,33 +113,57 @@ class JobScraper:
         
         all_jobs = []
         
-        # Scrape from multiple search terms and locations
-        jobs_per_search = max(1, max_jobs // (len(self.search_terms) * len(self.locations)))
+        # Optimized scraping with configurable parameters
+        config = self.scraping_config
+        search_terms_to_use = self.search_terms[:config["max_search_terms"]]
+        locations_to_use = self.locations[:config["max_locations"]]
         
-        for search_term in self.search_terms[:2]:  # Limit to first 2 search terms for efficiency
-            for location in self.locations[:3]:  # Limit to first 3 locations
-                try:
-                    # Set country for Indeed based on location
-                    country_param = 'USA' if location == "United States" else 'USA'  # Default to USA for now
+        print(f"Scraping {len(search_terms_to_use)} search terms across {len(locations_to_use)} locations")
+        
+        import time
+        for i, search_term in enumerate(search_terms_to_use):
+            for j, location in enumerate(locations_to_use):
+                # Add delay between requests to be respectful
+                if i > 0 or j > 0:
+                    time.sleep(config["delay_between_requests"])
+                for attempt in range(config["retry_attempts"]):
+                    try:
+                        # Set country for Indeed based on location
+                        country_mapping = {
+                            "United States": "USA", "Canada": "CA", "United Kingdom": "UK",
+                            "Germany": "DE", "France": "FR", "Australia": "AU", 
+                            "Netherlands": "NL", "Spain": "ES", "Italy": "IT"
+                        }
+                        country_param = country_mapping.get(location, "USA")
+                        
+                        print(f"Scraping '{search_term}' in '{location}' (attempt {attempt + 1})")
+                        
+                        # Scrape jobs with optimized parameters
+                        jobs = scrape_jobs(
+                            site_name=["linkedin", "indeed"][:config["max_sites_per_search"]],
+                            search_term=search_term,
+                            location=location,
+                            results_wanted=config["jobs_per_combination"],
+                            hours_old=config["hours_old_limit"],
+                            country_indeed=country_param
+                        )
                     
-                    # Scrape jobs (JobSpy is free!)
-                    jobs = scrape_jobs(
-                        site_name=["linkedin", "indeed"],  # Focus on main sites
-                        search_term=search_term,
-                        location=location,
-                        results_wanted=jobs_per_search,
-                        hours_old=72,  # Last 3 days for better results
-                        country_indeed=country_param
-                    )
-                    
-                    if jobs is not None and len(jobs) > 0:
-                        # Convert to list of dictionaries
-                        job_list = jobs.to_dict('records')
-                        all_jobs.extend(job_list)
-                    
-                except Exception as e:
-                    print(f"Error scraping '{search_term}' in '{location}': {str(e)}", file=sys.stderr)
-                    continue
+                        if jobs is not None and len(jobs) > 0:
+                            # Convert to list of dictionaries
+                            job_list = jobs.to_dict('records')
+                            all_jobs.extend(job_list)
+                            print(f"Successfully scraped {len(job_list)} jobs")
+                            break  # Success, no need to retry
+                        else:
+                            print(f"No jobs found for '{search_term}' in '{location}'")
+                            break  # No retry needed for empty results
+                        
+                    except Exception as e:
+                        print(f"Error scraping '{search_term}' in '{location}' (attempt {attempt + 1}): {str(e)}", file=sys.stderr)
+                        if attempt == config["retry_attempts"] - 1:
+                            print(f"Max retries reached for '{search_term}' in '{location}'", file=sys.stderr)
+                        else:
+                            time.sleep(2)  # Wait before retry
         
         return all_jobs
     

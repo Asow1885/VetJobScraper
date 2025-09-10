@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
 import slowDown from "express-slow-down";
@@ -28,11 +28,11 @@ const scrapingLimiter = rateLimit({
 const speedLimiter = slowDown({
   windowMs: 15 * 60 * 1000,
   delayAfter: 50,
-  delayMs: 500,
+  delayMs: () => 500,
 });
 
 // Validation helpers
-const handleValidationErrors = (req: any, res: any, next: any) => {
+const handleValidationErrors = (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({ 
@@ -67,7 +67,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     query('limit').optional().isInt({ min: 1, max: 1000 }),
     query('offset').optional().isInt({ min: 0 }),
     handleValidationErrors
-  ], async (req, res) => {
+  ], async (req: Request, res: Response) => {
     try {
       const { source, status, veteranOnly, limit, offset } = req.query;
       const jobs = await storage.getJobs({
@@ -86,7 +86,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/jobs/:id", [
     param('id').isUUID().withMessage('Invalid job ID format'),
     handleValidationErrors
-  ], async (req, res) => {
+  ], async (req: Request, res: Response) => {
     try {
       const job = await storage.getJob(req.params.id);
       if (!job) {
@@ -107,7 +107,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     body('description').optional().isString().trim().isLength({ max: 10000 }),
     body('veteranKeywords').optional().isArray(),
     handleValidationErrors
-  ], async (req, res) => {
+  ], async (req: Request, res: Response) => {
     try {
       const validatedData = insertJobSchema.parse(req.body);
       const job = await storage.createJob(validatedData);
@@ -123,7 +123,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     body('title').optional().isString().trim().isLength({ min: 1, max: 500 }).escape(),
     body('company').optional().isString().trim().isLength({ min: 1, max: 200 }).escape(),
     handleValidationErrors
-  ], async (req, res) => {
+  ], async (req: Request, res: Response) => {
     try {
       const job = await storage.updateJob(req.params.id, req.body);
       if (!job) {
@@ -138,7 +138,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete("/api/jobs/:id", [
     param('id').isUUID().withMessage('Invalid job ID format'),
     handleValidationErrors
-  ], async (req, res) => {
+  ], async (req: Request, res: Response) => {
     try {
       const deleted = await storage.deleteJob(req.params.id);
       if (!deleted) {
@@ -171,7 +171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     scrapingLimiter,
     body('maxJobs').optional().isInt({ min: 1, max: 100 }).withMessage('maxJobs must be between 1 and 100'),
     handleValidationErrors
-  ], async (req, res) => {
+  ], async (req: Request, res: Response) => {
     try {
       const { maxJobs = 50 } = req.body;
       jobScraperService.runScraping(maxJobs);
@@ -237,7 +237,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/kaza-connect/post/:jobId", [
     param('jobId').isUUID().withMessage('Invalid job ID format'),
     handleValidationErrors
-  ], async (req, res) => {
+  ], async (req: Request, res: Response) => {
     try {
       const job = await storage.getJob(req.params.jobId);
       if (!job) {
@@ -255,7 +255,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     body('jobIds').isArray({ min: 1, max: 50 }).withMessage('jobIds must be an array with 1-50 items'),
     body('jobIds.*').isUUID().withMessage('Each job ID must be a valid UUID'),
     handleValidationErrors
-  ], async (req, res) => {
+  ], async (req: Request, res: Response) => {
     try {
       const { jobIds } = req.body;
       if (!Array.isArray(jobIds)) {
