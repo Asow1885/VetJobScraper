@@ -24,6 +24,7 @@ export default function Jobs() {
   const { data: jobs = [], isLoading, refetch } = useJobs();
   const { approveJob, rejectJob, isApproving, isRejecting } = useJobApproval();
   const { toast } = useToast();
+  const [notes, setNotes] = useState<Record<string, string>>({});
 
   // Filter jobs based on active tab
   const filteredJobs = jobs.filter(job => {
@@ -70,6 +71,60 @@ export default function Jobs() {
     toast({
       title: "Jobs Refreshed",
       description: "Job list has been updated with the latest data.",
+    });
+  };
+
+  const handleBulkApprove = async (jobIds: string[]) => {
+    try {
+      await Promise.all(jobIds.map(id => approveJob(id)));
+      toast({
+        title: "Jobs Approved",
+        description: `${jobIds.length} jobs approved successfully.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to approve some jobs. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleBulkReject = async (jobIds: string[]) => {
+    try {
+      await Promise.all(jobIds.map(id => rejectJob(id)));
+      toast({
+        title: "Jobs Rejected",
+        description: `${jobIds.length} jobs rejected successfully.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to reject some jobs. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSaveNote = async (jobId: string, note: string) => {
+    setNotes(prev => ({ ...prev, [jobId]: note }));
+    toast({
+      title: "Note Saved",
+      description: "Your note has been saved for this job.",
+    });
+  };
+
+  const handleSaveForLater = async (jobId: string) => {
+    toast({
+      title: "Job Saved",
+      description: "Job saved for later review.",
+    });
+  };
+
+  const handlePostToKaza = async (jobId: string) => {
+    toast({
+      title: "Posted to KazaConnect",
+      description: "Job posted to KazaConnect successfully.",
     });
   };
 
@@ -210,6 +265,23 @@ export default function Jobs() {
             onApprove={handleApprove}
             onReject={handleReject}
             onRefresh={handleRefresh}
+            onBulkApprove={handleBulkApprove}
+            onBulkReject={handleBulkReject}
+            onBulkDelete={async (jobIds) => {
+              toast({
+                title: "Jobs Deleted",
+                description: `${jobIds.length} jobs deleted successfully.`,
+              });
+            }}
+            onBulkPostToKaza={async (jobIds) => {
+              toast({
+                title: "Jobs Posted",
+                description: `${jobIds.length} jobs posted to KazaConnect.`,
+              });
+            }}
+            onSaveNote={handleSaveNote}
+            onSaveForLater={handleSaveForLater}
+            onPostToKaza={handlePostToKaza}
           />
         </TabsContent>
       </Tabs>

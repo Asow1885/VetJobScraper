@@ -58,9 +58,9 @@ export function AdvancedFilters({
   const [saveSearchName, setSaveSearchName] = useState("");
 
   // Extract unique values from jobs for filter options
-  const uniqueSources = [...new Set(jobs.map(job => job.source))];
-  const uniqueJobTypes = [...new Set(jobs.map(job => job.jobType).filter(Boolean))];
-  const uniqueLocations = [...new Set(jobs.map(job => job.location).filter(Boolean))];
+  const uniqueSources = Array.from(new Set(jobs.map(job => job.source)));
+  const uniqueJobTypes = Array.from(new Set(jobs.map(job => job.jobType).filter(Boolean)));
+  const uniqueLocations = Array.from(new Set(jobs.map(job => job.location).filter(Boolean)));
   
   const maxSalary = Math.max(...jobs.map(job => job.salaryMax || 0).filter(Boolean), 200000);
   const minSalary = Math.min(...jobs.map(job => job.salaryMin || 0).filter(Boolean), 0);
@@ -199,7 +199,7 @@ export function AdvancedFilters({
                     Job Types
                   </Label>
                   <div className="space-y-2 max-h-32 overflow-y-auto">
-                    {uniqueJobTypes.map(type => (
+                    {uniqueJobTypes.map(type => type && (
                       <div key={type} className="flex items-center space-x-2">
                         <Checkbox
                           id={`type-${type}`}
@@ -227,7 +227,7 @@ export function AdvancedFilters({
                     Locations
                   </Label>
                   <div className="space-y-2 max-h-32 overflow-y-auto">
-                    {uniqueLocations.slice(0, 10).map(location => (
+                    {uniqueLocations.slice(0, 10).map(location => location && (
                       <div key={location} className="flex items-center space-x-2">
                         <Checkbox
                           id={`location-${location}`}

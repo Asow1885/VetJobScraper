@@ -78,7 +78,9 @@ export function BulkOperations({
             <Checkbox
               checked={allSelected}
               ref={(ref) => {
-                if (ref) ref.indeterminate = someSelected;
+                if (ref && ref instanceof HTMLInputElement) {
+                  ref.indeterminate = someSelected;
+                }
               }}
               onCheckedChange={onSelectAll}
               data-testid="checkbox-select-all"

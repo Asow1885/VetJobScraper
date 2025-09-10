@@ -8,7 +8,7 @@ import { JobPreview } from "./job-preview";
 import { Job } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { RefreshCw, Search } from "lucide-react";
+import { Search, RefreshCw, Zap } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrapingControls } from "@/components/dashboard/scraping-controls";
@@ -136,21 +136,21 @@ export function EnhancedJobsGrid({
       </div>
       
       <h3 className="text-xl font-semibold text-foreground mb-2">
-        {Object.values(filters).some(f => f !== null && f !== "" && (!Array.isArray(f) || f.length > 0))
+        {searchTerm || sourceFilter !== "all" || statusFilter !== "all" || veteranFilter !== "all" 
           ? "No jobs match your filters" 
           : "No jobs yet? Let's get started!"
         }
       </h3>
       
       <p className="text-muted-foreground mb-6 max-w-md mx-auto">
-        {Object.values(filters).some(f => f !== null && f !== "" && (!Array.isArray(f) || f.length > 0))
+        {searchTerm || sourceFilter !== "all" || statusFilter !== "all" || veteranFilter !== "all"
           ? "Try adjusting your filters or search terms to find more opportunities."
           : "Start by running a job scrape to discover the latest opportunities from top platforms like LinkedIn, Indeed, and more."
         }
       </p>
 
       <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
-        {!Object.values(filters).some(f => f !== null && f !== "" && (!Array.isArray(f) || f.length > 0)) ? (
+        {(!searchTerm && sourceFilter === "all" && statusFilter === "all" && veteranFilter === "all") ? (
           <div className="w-full max-w-md">
             <ScrapingControls />
           </div>
@@ -158,16 +158,12 @@ export function EnhancedJobsGrid({
           <div className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => setFilters({
-                search: "",
-                sources: [],
-                jobTypes: [],
-                locations: [],
-                salaryRange: [0, 200000],
-                veteranFriendly: null,
-                dateRange: { from: null, to: null },
-                status: []
-              })}
+              onClick={() => {
+                setSearchTerm("");
+                setSourceFilter("all");
+                setStatusFilter("all");
+                setVeteranFilter("all");
+              }}
             >
               Clear Filters
             </Button>
@@ -181,6 +177,28 @@ export function EnhancedJobsGrid({
         )}
       </div>
     </div>
+  );
+
+  const ErrorState = () => (
+    <Alert className="border-orange-200 bg-orange-50">
+      <Zap className="h-4 w-4 text-orange-600" />
+      <AlertDescription className="text-orange-800">
+        <div className="space-y-2">
+          <p className="font-medium">Scraping encountered an issue</p>
+          <p className="text-sm">
+            Don't worry! This often happens due to rate limiting from job platforms. 
+          </p>
+          <div className="flex gap-2 mt-3">
+            <Button variant="outline" size="sm" onClick={onRefresh}>
+              Try Again
+            </Button>
+            <Button variant="outline" size="sm">
+              Check Logs
+            </Button>
+          </div>
+        </div>
+      </AlertDescription>
+    </Alert>
   );
 
   if (isLoading) {
@@ -248,7 +266,7 @@ export function EnhancedJobsGrid({
                         setSelectedJobs(prev => prev.filter(id => id !== job.id));
                       }
                     }}
-                    className="bg-white/90 backdrop-blur-sm shadow-sm"
+                    className="bg-white/90 backdrop-blur-sm"
                     data-testid={`checkbox-select-${job.id}`}
                   />
                 </div>
