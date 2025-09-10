@@ -117,9 +117,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Job approval endpoints
+  app.patch("/api/jobs/:id/approve", [
+    param('id').isUUID().withMessage('Invalid job ID format'),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const job = await storage.updateJobStatus(req.params.id, 'approved');
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+      res.json({ message: "Job approved successfully", job });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to approve job" });
+    }
+  });
+
+  app.patch("/api/jobs/:id/reject", [
+    param('id').isUUID().withMessage('Invalid job ID format'),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const job = await storage.updateJobStatus(req.params.id, 'rejected');
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+      res.json({ message: "Job rejected successfully", job });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to reject job" });
+    }
+  });
+
   app.patch("/api/jobs/:id", [
     param('id').isUUID().withMessage('Invalid job ID format'),
-    body('status').optional().isIn(['pending', 'posted', 'failed']),
+    body('status').optional().isIn(['pending', 'approved', 'rejected', 'posted', 'failed']),
     body('title').optional().isString().trim().isLength({ min: 1, max: 500 }).escape(),
     body('company').optional().isString().trim().isLength({ min: 1, max: 200 }).escape(),
     handleValidationErrors

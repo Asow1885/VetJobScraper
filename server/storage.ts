@@ -36,6 +36,7 @@ export interface IStorage {
   getJob(id: string): Promise<Job | undefined>;
   createJob(job: InsertJob): Promise<Job>;
   updateJob(id: string, updates: Partial<Job>): Promise<Job | undefined>;
+  updateJobStatus(id: string, status: string): Promise<Job | undefined>;
   deleteJob(id: string): Promise<boolean>;
   getJobStats(): Promise<{
     total: number;
@@ -203,6 +204,15 @@ export class MemStorage implements IStorage {
     if (!job) return undefined;
 
     const updatedJob = { ...job, ...updates };
+    this.jobs.set(id, updatedJob);
+    return updatedJob;
+  }
+
+  async updateJobStatus(id: string, status: string): Promise<Job | undefined> {
+    const job = this.jobs.get(id);
+    if (!job) return undefined;
+
+    const updatedJob = { ...job, status };
     this.jobs.set(id, updatedJob);
     return updatedJob;
   }
@@ -411,6 +421,11 @@ export class DbStorage implements IStorage {
 
   async updateJob(id: string, updates: Partial<Job>): Promise<Job | undefined> {
     const result = await db.update(jobs).set(updates).where(eq(jobs.id, id)).returning();
+    return result[0];
+  }
+
+  async updateJobStatus(id: string, status: string): Promise<Job | undefined> {
+    const result = await db.update(jobs).set({ status }).where(eq(jobs.id, id)).returning();
     return result[0];
   }
 
