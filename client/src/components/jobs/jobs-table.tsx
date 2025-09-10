@@ -1,13 +1,10 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Edit, Trash2, Search } from "lucide-react";
-import { useJobs } from "@/hooks/use-jobs";
+import { Eye, Check, X, ExternalLink, Medal, MapPin, DollarSign, Building2 } from "lucide-react";
 import { Job } from "@shared/schema";
-import { useState } from "react";
 import { formatDistanceToNow } from "date-fns";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const sourceIcons: Record<string, string> = {
   linkedin: "fab fa-linkedin-in",
@@ -16,185 +13,250 @@ const sourceIcons: Record<string, string> = {
   google: "fab fa-google"
 };
 
-function JobRow({ job }: { job: Job }) {
-  const sourceIcon = sourceIcons[job.source] || "fas fa-globe";
+interface JobRowProps {
+  job: Job;
+  onApprove?: (jobId: string) => void;
+  onReject?: (jobId: string) => void;
+  onView?: (jobId: string) => void;
+}
+
+function JobRow({ job, onApprove, onReject, onView }: JobRowProps) {
   const isVeteranFriendly = job.veteranKeywords && job.veteranKeywords.length > 0;
+  const hasSalary = job.salaryMin || job.salaryMax;
+
+  const formatSalary = () => {
+    if (!hasSalary) return null;
+    if (job.salaryMin && job.salaryMax) {
+      return `$${job.salaryMin.toLocaleString()} - $${job.salaryMax.toLocaleString()}`;
+    }
+    if (job.salaryMin) return `$${job.salaryMin.toLocaleString()}+`;
+    if (job.salaryMax) return `Up to $${job.salaryMax.toLocaleString()}`;
+    return null;
+  };
+
+  const getStatusBadge = () => {
+    switch (job.status) {
+      case 'approved':
+        return <Badge className="bg-green-100 text-green-800 border-green-300">Approved</Badge>;
+      case 'rejected':
+        return <Badge className="bg-red-100 text-red-800 border-red-300">Rejected</Badge>;
+      case 'posted':
+        return <Badge className="bg-blue-100 text-blue-800 border-blue-300">Posted</Badge>;
+      case 'pending':
+      default:
+        return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">Pending Review</Badge>;
+    }
+  };
   
   return (
-    <tr className="hover:bg-muted/30 transition-colors" data-testid={`job-row-${job.id}`}>
+    <tr className={`hover:bg-muted/30 transition-colors border-l-4 ${
+      isVeteranFriendly ? 'border-l-amber-400 bg-amber-50/20' : 'border-l-blue-400'
+    }`} data-testid={`job-row-${job.id}`}>
+      {/* Title & Company */}
       <td className="px-6 py-4">
-        <div className="flex items-center">
-          <div className="flex-1">
-            <p className="font-medium text-foreground">{job.title}</p>
-            <div className="flex items-center space-x-2 mt-1">
-              {isVeteranFriendly && (
-                <Badge variant="secondary" className="bg-accent/10 text-accent">
-                  Veteran Friendly
-                </Badge>
-              )}
-              {job.jobType && (
-                <Badge variant="outline" className="bg-primary/10 text-primary">
-                  {job.jobType}
-                </Badge>
-              )}
+        <div className="space-y-2">
+          <div className="flex items-start gap-2">
+            <div className="flex-1 min-w-0">
+              <h4 className="font-semibold text-foreground text-lg leading-tight line-clamp-2">
+                {job.title}
+              </h4>
+              <div className="flex items-center gap-2 mt-1">
+                <Building2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-muted-foreground font-medium">{job.company}</span>
+              </div>
             </div>
+            {isVeteranFriendly && (
+              <Tooltip>
+                <TooltipTrigger>
+                  <Badge className="bg-amber-100 text-amber-800 border-amber-300 flex items-center gap-1">
+                    <Medal className="h-3 w-3" />
+                    Veteran
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Keywords: {job.veteranKeywords?.join(", ")}</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-2">
+            {job.location && (
+              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                <MapPin className="h-3 w-3" />
+                <span>{job.location}</span>
+              </div>
+            )}
+            
+            {hasSalary && (
+              <div className="flex items-center gap-1 text-sm text-green-700 bg-green-50 px-2 py-1 rounded-md border border-green-200">
+                <DollarSign className="h-3 w-3" />
+                <span className="font-semibold">{formatSalary()}</span>
+              </div>
+            )}
+
+            {job.jobType && job.jobType !== 'nan' && job.jobType !== 'None' && (
+              <Badge variant="outline" className="text-xs capitalize">
+                {job.jobType}
+              </Badge>
+            )}
           </div>
         </div>
       </td>
-      <td className="px-6 py-4 text-sm text-foreground">{job.company}</td>
-      <td className="px-6 py-4 text-sm text-muted-foreground">{job.location || 'Remote'}</td>
+
+      {/* Source */}
       <td className="px-6 py-4">
-        <div className="flex items-center space-x-2">
-          <i className={`${sourceIcon} text-primary`}></i>
-          <span className="text-sm text-muted-foreground capitalize">{job.source}</span>
-        </div>
-      </td>
-      <td className="px-6 py-4">
-        <Badge 
-          variant={job.postedToKaza ? "default" : "secondary"}
-          className={job.postedToKaza ? "bg-accent/10 text-accent" : "bg-yellow-100 text-yellow-800"}
-        >
-          {job.postedToKaza ? "Posted to KazaConnect" : "Pending Review"}
+        <Badge variant="outline" className="capitalize">
+          {job.source}
         </Badge>
       </td>
+
+      {/* Status */}
       <td className="px-6 py-4">
-        <div className="flex items-center space-x-2">
-          <Button variant="ghost" size="sm" data-testid={`button-view-${job.id}`}>
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="sm" data-testid={`button-edit-${job.id}`}>
-            <Edit className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="sm" data-testid={`button-delete-${job.id}`}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
+        {getStatusBadge()}
+      </td>
+
+      {/* Scraped Date */}
+      <td className="px-6 py-4 text-sm text-muted-foreground">
+        {job.scrapedDate ? formatDistanceToNow(new Date(job.scrapedDate), { addSuffix: true }) : 'Unknown'}
+      </td>
+
+      {/* Actions */}
+      <td className="px-6 py-4">
+        <div className="flex items-center gap-1">
+          {onView && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onView(job.id)}
+              data-testid={`button-view-${job.id}`}
+              className="h-8 w-8 p-0"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+          )}
+
+          {job.url && job.url !== 'nan' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => window.open(job.url, '_blank')}
+              data-testid={`button-external-${job.id}`}
+              className="h-8 w-8 p-0"
+            >
+              <ExternalLink className="h-4 w-4" />
+            </Button>
+          )}
+
+          {job.status === 'pending' && onApprove && onReject && (
+            <div className="flex items-center gap-1 ml-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onReject(job.id)}
+                className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                data-testid={`button-reject-${job.id}`}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => onApprove(job.id)}
+                className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                data-testid={`button-approve-${job.id}`}
+              >
+                <Check className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
       </td>
     </tr>
   );
 }
 
-export function JobsTable() {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [sourceFilter, setSourceFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  
-  const { data: jobs = [], isLoading } = useJobs({
-    source: sourceFilter && sourceFilter !== 'all' ? sourceFilter : undefined,
-    status: statusFilter && statusFilter !== 'all' ? statusFilter : undefined,
-    limit: 10
-  });
+interface JobsTableProps {
+  jobs?: Job[];
+  isLoading?: boolean;
+  onApprove?: (jobId: string) => void;
+  onReject?: (jobId: string) => void;
+  onView?: (jobId: string) => void;
+}
 
-  const filteredJobs = jobs.filter(job => 
-    searchTerm === "" || 
-    job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    job.company.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
+export function JobsTable({ 
+  jobs = [], 
+  isLoading = false, 
+  onApprove, 
+  onReject, 
+  onView 
+}: JobsTableProps) {
   return (
-    <Card data-testid="jobs-table">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Recent Jobs</h3>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <Input
-                type="text"
-                placeholder="Search jobs..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-64"
-                data-testid="input-search-jobs"
-              />
-              <Button size="sm" data-testid="button-search">
-                <Search className="h-4 w-4" />
-              </Button>
-            </div>
-            <Select value={sourceFilter} onValueChange={setSourceFilter}>
-              <SelectTrigger className="w-40" data-testid="select-source-filter">
-                <SelectValue placeholder="All Sources" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Sources</SelectItem>
-                <SelectItem value="linkedin">LinkedIn</SelectItem>
-                <SelectItem value="indeed">Indeed</SelectItem>
-                <SelectItem value="glassdoor">Glassdoor</SelectItem>
-                <SelectItem value="google">Google Jobs</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </CardHeader>
+    <Card data-testid="jobs-table" className="overflow-hidden">
       <CardContent className="p-0">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-muted/30">
+            <thead className="bg-muted/30 border-b">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Job Title
+                <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Job Details
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Company
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Location
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Source
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Status
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Scraped
+                </th>
+                <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Actions
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {isLoading ? (
-                Array.from({ length: 5 }).map((_, index) => (
+                Array.from({ length: 8 }).map((_, index) => (
                   <tr key={index}>
-                    <td colSpan={6} className="px-6 py-4">
-                      <div className="animate-pulse">
-                        <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
-                        <div className="h-3 bg-muted rounded w-1/2"></div>
+                    <td colSpan={5} className="px-6 py-6">
+                      <div className="animate-pulse flex items-center space-x-4">
+                        <div className="space-y-2 flex-1">
+                          <div className="h-5 bg-muted rounded w-3/4"></div>
+                          <div className="h-4 bg-muted rounded w-1/2"></div>
+                          <div className="flex space-x-2">
+                            <div className="h-3 bg-muted rounded w-16"></div>
+                            <div className="h-3 bg-muted rounded w-20"></div>
+                          </div>
+                        </div>
+                        <div className="h-6 bg-muted rounded w-16"></div>
                       </div>
                     </td>
                   </tr>
                 ))
-              ) : filteredJobs.length === 0 ? (
+              ) : jobs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
-                    No jobs found
+                  <td colSpan={5} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center space-y-2">
+                      <Eye className="h-8 w-8 text-muted-foreground" />
+                      <p className="text-muted-foreground font-medium">No jobs to display</p>
+                      <p className="text-sm text-muted-foreground">Adjust your filters or run a new scrape to see jobs here.</p>
+                    </div>
                   </td>
                 </tr>
               ) : (
-                filteredJobs.map((job) => (
-                  <JobRow key={job.id} job={job} />
+                jobs.map((job) => (
+                  <JobRow 
+                    key={job.id} 
+                    job={job} 
+                    onApprove={onApprove}
+                    onReject={onReject}
+                    onView={onView}
+                  />
                 ))
               )}
             </tbody>
           </table>
-        </div>
-        
-        {/* Pagination */}
-        <div className="px-6 py-4 border-t border-border">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Showing 1-{Math.min(10, filteredJobs.length)} of {filteredJobs.length} jobs
-            </p>
-            <div className="flex items-center space-x-2">
-              <Button variant="outline" size="sm" disabled data-testid="button-previous">
-                Previous
-              </Button>
-              <Button variant="default" size="sm" data-testid="button-page-1">
-                1
-              </Button>
-              <Button variant="outline" size="sm" data-testid="button-next">
-                Next
-              </Button>
-            </div>
-          </div>
         </div>
       </CardContent>
     </Card>

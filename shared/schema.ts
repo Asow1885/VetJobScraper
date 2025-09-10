@@ -25,7 +25,7 @@ export const jobs = pgTable("jobs", {
   expiresOn: timestamp("expires_on"),
   postedToKaza: boolean("posted_to_kaza").default(false),
   kazaPostId: text("kaza_post_id"),
-  status: text("status").default("pending"), // pending, posted, failed, expired
+  status: text("status").default("pending"), // pending, approved, rejected, posted, failed, expired
   metadata: jsonb("metadata"),
 });
 
