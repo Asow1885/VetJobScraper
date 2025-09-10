@@ -53,7 +53,7 @@ class JobScraper:
     
     def has_veteran_keywords(self, text):
         """Check if job description contains veteran-related keywords"""
-        if not text:
+        if not text or not isinstance(text, str):
             return []
         
         text_lower = text.lower()
@@ -119,24 +119,29 @@ class JobScraper:
             is_veteran_friendly = len(all_keywords) > 0
             
             # Process ALL jobs, not just veteran ones
+            # Handle potential non-string values
+            description = job.get('description', '')
+            if not isinstance(description, str):
+                description = str(description) if description is not None else ''
+            
             processed_job = {
-                'title': job.get('title', 'Unknown'),
-                'company': job.get('company', 'Unknown'),
-                'location': job.get('location', 'Unknown'),
-                'job_type': job.get('job_type', 'full-time'),
-                'salary_min': job.get('min_amount'),
-                'salary_max': job.get('max_amount'),
-                'description': job.get('description', '')[:1000] if job.get('description') else '',  # Limit description length
-                'url': job.get('job_url_direct', job.get('job_url', '')),
-                'source': job.get('site', 'unknown'),
+                'title': str(job.get('title', 'Unknown')),
+                'company': str(job.get('company', 'Unknown')),
+                'location': str(job.get('location', 'Unknown')),
+                'job_type': str(job.get('job_type', 'full-time')),
+                'salary_min': job.get('min_amount') if str(job.get('min_amount')).lower() != 'nan' else None,
+                'salary_max': job.get('max_amount') if str(job.get('max_amount')).lower() != 'nan' else None,
+                'description': description[:1000],  # Limit description length
+                'url': str(job.get('job_url_direct', job.get('job_url', ''))),
+                'source': str(job.get('site', 'unknown')),
                 'veteran_keywords': all_keywords,  # Empty if no veteran keywords
                 'is_veteran_friendly': is_veteran_friendly,  # Boolean indicator
                 'scraped_date': datetime.now().isoformat(),
                 'expires_on': (datetime.now() + timedelta(days=30)).isoformat(),
                 'metadata': {
-                    'date_posted': job.get('date_posted'),
-                    'compensation': job.get('compensation'),
-                    'benefits': job.get('benefits'),
+                    'date_posted': str(job.get('date_posted')) if job.get('date_posted') else None,
+                    'compensation': str(job.get('compensation')) if job.get('compensation') else None,
+                    'benefits': str(job.get('benefits')) if job.get('benefits') else None,
                     'veteran_friendly': is_veteran_friendly
                 }
             }
