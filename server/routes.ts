@@ -13,7 +13,7 @@ import { insertJobSchema, insertScrapingSourceSchema } from "@shared/schema";
 // Security middleware
 const securityLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: 1000, // limit each IP to 1000 requests per windowMs (more permissive for development)
   message: { error: "Too many requests, please try again later" },
   standardHeaders: true,
   legacyHeaders: false,
@@ -27,8 +27,8 @@ const scrapingLimiter = rateLimit({
 
 const speedLimiter = slowDown({
   windowMs: 15 * 60 * 1000,
-  delayAfter: 50,
-  delayMs: () => 500,
+  delayAfter: 500, // increased from 50 to 500
+  delayMs: () => 100, // reduced from 500ms to 100ms
 });
 
 // Validation helpers
