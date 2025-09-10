@@ -18,8 +18,8 @@ import { useJobs } from "@/hooks/use-jobs";
 import { useJobApproval } from "@/hooks/use-job-approval";
 import { useToast } from "@/hooks/use-toast";
 import { ScrapingControls } from "@/components/dashboard/scraping-controls";
-import { EnhancedScrapingControls } from "@/components/scraping/enhanced-scraping-controls";
-import { ScrapingInsights } from "@/components/scraping/scraping-insights";
+// import { EnhancedScrapingControls } from "@/components/scraping/enhanced-scraping-controls";
+// import { ScrapingInsights } from "@/components/scraping/scraping-insights";
 
 export default function Jobs() {
   const [activeTab, setActiveTab] = useState("all");
@@ -234,7 +234,7 @@ export default function Jobs() {
       </div>
 
       {/* Enhanced Scraping Controls */}
-      <EnhancedScrapingControls />
+      <ScrapingControls />
 
       {/* Job Tabs and List */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
