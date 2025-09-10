@@ -128,13 +128,19 @@ class JobScraper:
                     time.sleep(config["delay_between_requests"])
                 for attempt in range(config["retry_attempts"]):
                     try:
-                        # Set country for Indeed based on location
+                        # JobSpy country parameter mapping (based on supported values)
                         country_mapping = {
-                            "United States": "USA", "Canada": "CA", "United Kingdom": "UK",
-                            "Germany": "DE", "France": "FR", "Australia": "AU", 
-                            "Netherlands": "NL", "Spain": "ES", "Italy": "IT"
+                            "United States": "usa", "Canada": "canada", "United Kingdom": "uk",
+                            "Germany": "germany", "France": "france", "Australia": "australia", 
+                            "Netherlands": "netherlands", "Spain": "spain", "Italy": "italy",
+                            "Norway": "norway", "Sweden": "sweden", "Denmark": "denmark",
+                            "Switzerland": "switzerland", "Austria": "austria", "Belgium": "belgium",
+                            "Finland": "finland", "Portugal": "portugal", "Ireland": "ireland",
+                            "New Zealand": "new zealand", "Singapore": "singapore", 
+                            "Hong Kong": "hong kong", "Japan": "japan", "South Korea": "south korea",
+                            "India": "india", "Israel": "israel", "United Arab Emirates": "united arab emirates"
                         }
-                        country_param = country_mapping.get(location, "USA")
+                        country_param = country_mapping.get(location, "usa")
                         
                         print(f"Scraping '{search_term}' in '{location}' (attempt {attempt + 1})")
                         
