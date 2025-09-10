@@ -118,7 +118,7 @@ class JobScraper:
         search_terms_to_use = self.search_terms[:config["max_search_terms"]]
         locations_to_use = self.locations[:config["max_locations"]]
         
-        print(f"Scraping {len(search_terms_to_use)} search terms across {len(locations_to_use)} locations")
+        print(f"Scraping {len(search_terms_to_use)} search terms across {len(locations_to_use)} locations", file=sys.stderr)
         
         import time
         for i, search_term in enumerate(search_terms_to_use):
@@ -142,7 +142,7 @@ class JobScraper:
                         }
                         country_param = country_mapping.get(location, "usa")
                         
-                        print(f"Scraping '{search_term}' in '{location}' (attempt {attempt + 1})")
+                        print(f"Scraping '{search_term}' in '{location}' (attempt {attempt + 1})", file=sys.stderr)
                         
                         # Scrape jobs with optimized parameters
                         jobs = scrape_jobs(
@@ -158,10 +158,10 @@ class JobScraper:
                             # Convert to list of dictionaries
                             job_list = jobs.to_dict('records')
                             all_jobs.extend(job_list)
-                            print(f"Successfully scraped {len(job_list)} jobs")
+                            print(f"Successfully scraped {len(job_list)} jobs", file=sys.stderr)
                             break  # Success, no need to retry
                         else:
-                            print(f"No jobs found for '{search_term}' in '{location}'")
+                            print(f"No jobs found for '{search_term}' in '{location}'", file=sys.stderr)
                             break  # No retry needed for empty results
                         
                     except Exception as e:

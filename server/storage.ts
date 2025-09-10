@@ -8,9 +8,16 @@ import {
   type ScrapingLog,
   type InsertScrapingLog,
   type KazaConnectLog,
-  type InsertKazaConnectLog
+  type InsertKazaConnectLog,
+  users,
+  jobs,
+  scrapingSources,
+  scrapingLogs,
+  kazaConnectLogs
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { db } from "./db";
+import { eq, desc, and, count } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -304,4 +311,186 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export class DbStorage implements IStorage {
+  // Initialize default sources if they don't exist
+  async initializeDefaultSources() {
+    const existingSources = await db.select().from(scrapingSources);
+    
+    if (existingSources.length === 0) {
+      const defaultSources: InsertScrapingSource[] = [
+        {
+          name: "LinkedIn",
+          type: "jobspy",
+          isActive: true,
+          config: { site_name: "linkedin" }
+        },
+        {
+          name: "Indeed",
+          type: "jobspy",
+          isActive: true,
+          config: { site_name: "indeed" }
+        },
+        {
+          name: "Glassdoor",
+          type: "jobspy",
+          isActive: true,
+          config: { site_name: "glassdoor" }
+        },
+        {
+          name: "Google Jobs",
+          type: "jobspy",
+          isActive: true,
+          config: { site_name: "google" }
+        }
+      ];
+
+      await db.insert(scrapingSources).values(defaultSources);
+    }
+  }
+
+  // Users
+  async getUser(id: string): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.id, id));
+    return result[0];
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.username, username));
+    return result[0];
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const result = await db.insert(users).values(insertUser).returning();
+    return result[0];
+  }
+
+  // Jobs
+  async getJobs(filters?: { 
+    source?: string; 
+    status?: string; 
+    veteranOnly?: boolean;
+    limit?: number;
+    offset?: number;
+  }): Promise<Job[]> {
+    const conditions = [];
+
+    if (filters?.source) {
+      conditions.push(eq(jobs.source, filters.source));
+    }
+
+    if (filters?.status) {
+      conditions.push(eq(jobs.status, filters.status));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+    
+    const result = await db
+      .select()
+      .from(jobs)
+      .where(whereClause)
+      .orderBy(desc(jobs.scrapedDate))
+      .offset(filters?.offset || 0)
+      .limit(filters?.limit || 1000);
+    
+    if (filters?.veteranOnly) {
+      return result.filter(job => job.veteranKeywords && job.veteranKeywords.length > 0);
+    }
+
+    return result;
+  }
+
+  async getJob(id: string): Promise<Job | undefined> {
+    const result = await db.select().from(jobs).where(eq(jobs.id, id));
+    return result[0];
+  }
+
+  async createJob(insertJob: InsertJob): Promise<Job> {
+    const result = await db.insert(jobs).values(insertJob).returning();
+    return result[0];
+  }
+
+  async updateJob(id: string, updates: Partial<Job>): Promise<Job | undefined> {
+    const result = await db.update(jobs).set(updates).where(eq(jobs.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteJob(id: string): Promise<boolean> {
+    const result = await db.delete(jobs).where(eq(jobs.id, id));
+    return result.rowCount > 0;
+  }
+
+  async getJobStats(): Promise<{
+    total: number;
+    veteran: number;
+    postedToKaza: number;
+    pending: number;
+  }> {
+    const totalResult = await db.select({ count: count() }).from(jobs);
+    const postedResult = await db.select({ count: count() }).from(jobs).where(eq(jobs.postedToKaza, true));
+    const pendingResult = await db.select({ count: count() }).from(jobs).where(eq(jobs.status, "pending"));
+    
+    // Get all jobs to count veteran ones (since we need to check array length)
+    const allJobs = await db.select({ veteranKeywords: jobs.veteranKeywords }).from(jobs);
+    const veteran = allJobs.filter(job => job.veteranKeywords && job.veteranKeywords.length > 0).length;
+    
+    return {
+      total: totalResult[0]?.count || 0,
+      veteran,
+      postedToKaza: postedResult[0]?.count || 0,
+      pending: pendingResult[0]?.count || 0
+    };
+  }
+
+  // Scraping Sources
+  async getScrapingSources(): Promise<ScrapingSource[]> {
+    const result = await db.select().from(scrapingSources).orderBy(scrapingSources.name);
+    return result;
+  }
+
+  async getScrapingSource(id: string): Promise<ScrapingSource | undefined> {
+    const result = await db.select().from(scrapingSources).where(eq(scrapingSources.id, id));
+    return result[0];
+  }
+
+  async createScrapingSource(insertSource: InsertScrapingSource): Promise<ScrapingSource> {
+    const result = await db.insert(scrapingSources).values(insertSource).returning();
+    return result[0];
+  }
+
+  async updateScrapingSource(id: string, updates: Partial<ScrapingSource>): Promise<ScrapingSource | undefined> {
+    const result = await db.update(scrapingSources).set(updates).where(eq(scrapingSources.id, id)).returning();
+    return result[0];
+  }
+
+  // Scraping Logs
+  async getScrapingLogs(limit: number = 50): Promise<ScrapingLog[]> {
+    const result = await db.select().from(scrapingLogs)
+      .orderBy(desc(scrapingLogs.timestamp))
+      .limit(limit);
+    return result;
+  }
+
+  async createScrapingLog(insertLog: InsertScrapingLog): Promise<ScrapingLog> {
+    const result = await db.insert(scrapingLogs).values(insertLog).returning();
+    return result[0];
+  }
+
+  // KazaConnect Logs
+  async getKazaConnectLogs(limit: number = 50): Promise<KazaConnectLog[]> {
+    const result = await db.select().from(kazaConnectLogs)
+      .orderBy(desc(kazaConnectLogs.timestamp))
+      .limit(limit);
+    return result;
+  }
+
+  async createKazaConnectLog(insertLog: InsertKazaConnectLog): Promise<KazaConnectLog> {
+    const result = await db.insert(kazaConnectLogs).values(insertLog).returning();
+    return result[0];
+  }
+}
+
+// Initialize and export storage
+const dbStorage = new DbStorage();
+dbStorage.initializeDefaultSources().catch(console.error);
+
+export const storage = dbStorage;
