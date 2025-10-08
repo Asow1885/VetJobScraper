@@ -7,6 +7,18 @@ export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  fullName: text("full_name"),
+  email: text("email"),
+  militaryBranch: text("military_branch"),
+  yearsOfService: integer("years_of_service"),
+  skills: text("skills").array(),
+  desiredJobTypes: text("desired_job_types").array(),
+  desiredLocations: text("desired_locations").array(),
+  minSalary: integer("min_salary"),
+  clearanceLevel: text("clearance_level"),
+  preferences: jsonb("preferences"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const jobs = pgTable("jobs", {
@@ -58,10 +70,26 @@ export const kazaConnectLogs = pgTable("kaza_connect_logs", {
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
+export const jobRecommendations = pgTable("job_recommendations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  jobId: varchar("job_id").notNull().references(() => jobs.id),
+  matchScore: integer("match_score").notNull(), // 0-100
+  matchReasons: text("match_reasons").array(),
+  skillMatches: text("skill_matches").array(),
+  locationMatch: boolean("location_match").default(false),
+  salaryMatch: boolean("salary_match").default(false),
+  veteranMatch: boolean("veteran_match").default(false),
+  matchDetails: jsonb("match_details"),
+  createdAt: timestamp("created_at").defaultNow(),
+  dismissed: boolean("dismissed").default(false),
+});
+
 // Insert schemas
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
 export const insertJobSchema = createInsertSchema(jobs).omit({
@@ -83,6 +111,11 @@ export const insertKazaConnectLogSchema = createInsertSchema(kazaConnectLogs).om
   timestamp: true,
 });
 
+export const insertJobRecommendationSchema = createInsertSchema(jobRecommendations).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -98,3 +131,6 @@ export type InsertScrapingLog = z.infer<typeof insertScrapingLogSchema>;
 
 export type KazaConnectLog = typeof kazaConnectLogs.$inferSelect;
 export type InsertKazaConnectLog = z.infer<typeof insertKazaConnectLogSchema>;
+
+export type JobRecommendation = typeof jobRecommendations.$inferSelect;
+export type InsertJobRecommendation = z.infer<typeof insertJobRecommendationSchema>;

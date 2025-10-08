@@ -9,11 +9,14 @@ import {
   type InsertScrapingLog,
   type KazaConnectLog,
   type InsertKazaConnectLog,
+  type JobRecommendation,
+  type InsertJobRecommendation,
   users,
   jobs,
   scrapingSources,
   scrapingLogs,
-  kazaConnectLogs
+  kazaConnectLogs,
+  jobRecommendations
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
@@ -58,6 +61,13 @@ export interface IStorage {
   // KazaConnect Logs
   getKazaConnectLogs(limit?: number): Promise<KazaConnectLog[]>;
   createKazaConnectLog(log: InsertKazaConnectLog): Promise<KazaConnectLog>;
+
+  // Job Recommendations
+  getRecommendationsForUser(userId: string, limit?: number): Promise<JobRecommendation[]>;
+  createRecommendation(recommendation: InsertJobRecommendation): Promise<JobRecommendation>;
+  createRecommendations(recommendations: InsertJobRecommendation[]): Promise<JobRecommendation[]>;
+  dismissRecommendation(id: string): Promise<boolean>;
+  updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
 }
 
 export class MemStorage implements IStorage {
@@ -66,6 +76,7 @@ export class MemStorage implements IStorage {
   private scrapingSources: Map<string, ScrapingSource>;
   private scrapingLogs: Map<string, ScrapingLog>;
   private kazaConnectLogs: Map<string, KazaConnectLog>;
+  private recommendations: Map<string, JobRecommendation>;
 
   constructor() {
     this.users = new Map();
@@ -73,6 +84,7 @@ export class MemStorage implements IStorage {
     this.scrapingSources = new Map();
     this.scrapingLogs = new Map();
     this.kazaConnectLogs = new Map();
+    this.recommendations = new Map();
 
     // Initialize default scraping sources
     this.initializeDefaultSources();
@@ -319,6 +331,58 @@ export class MemStorage implements IStorage {
     this.kazaConnectLogs.set(id, log);
     return log;
   }
+
+  // Job Recommendations
+  async getRecommendationsForUser(userId: string, limit: number = 20): Promise<JobRecommendation[]> {
+    const userRecs = Array.from(this.recommendations.values())
+      .filter(rec => rec.userId === userId && !rec.dismissed)
+      .sort((a, b) => b.matchScore - a.matchScore)
+      .slice(0, limit);
+    return userRecs;
+  }
+
+  async createRecommendation(recommendation: InsertJobRecommendation): Promise<JobRecommendation> {
+    const id = randomUUID();
+    const rec: JobRecommendation = {
+      ...recommendation,
+      id,
+      createdAt: new Date(),
+      dismissed: recommendation.dismissed || false,
+      matchReasons: recommendation.matchReasons || null,
+      skillMatches: recommendation.skillMatches || null,
+      matchDetails: recommendation.matchDetails || null,
+    };
+    this.recommendations.set(id, rec);
+    return rec;
+  }
+
+  async createRecommendations(recommendations: InsertJobRecommendation[]): Promise<JobRecommendation[]> {
+    const created: JobRecommendation[] = [];
+    for (const rec of recommendations) {
+      const created_rec = await this.createRecommendation(rec);
+      created.push(created_rec);
+    }
+    return created;
+  }
+
+  async dismissRecommendation(id: string): Promise<boolean> {
+    const rec = this.recommendations.get(id);
+    if (rec) {
+      rec.dismissed = true;
+      return true;
+    }
+    return false;
+  }
+
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    const user = this.users.get(id);
+    if (user) {
+      const updated = { ...user, ...updates, updatedAt: new Date() };
+      this.users.set(id, updated);
+      return updated;
+    }
+    return undefined;
+  }
 }
 
 export class DbStorage implements IStorage {
@@ -500,6 +564,45 @@ export class DbStorage implements IStorage {
 
   async createKazaConnectLog(insertLog: InsertKazaConnectLog): Promise<KazaConnectLog> {
     const result = await db.insert(kazaConnectLogs).values(insertLog).returning();
+    return result[0];
+  }
+
+  // Job Recommendations
+  async getRecommendationsForUser(userId: string, limit: number = 20): Promise<JobRecommendation[]> {
+    const result = await db.select().from(jobRecommendations)
+      .where(and(
+        eq(jobRecommendations.userId, userId),
+        eq(jobRecommendations.dismissed, false)
+      ))
+      .orderBy(desc(jobRecommendations.matchScore))
+      .limit(limit);
+    return result;
+  }
+
+  async createRecommendation(recommendation: InsertJobRecommendation): Promise<JobRecommendation> {
+    const result = await db.insert(jobRecommendations).values(recommendation).returning();
+    return result[0];
+  }
+
+  async createRecommendations(recommendations: InsertJobRecommendation[]): Promise<JobRecommendation[]> {
+    if (recommendations.length === 0) return [];
+    const result = await db.insert(jobRecommendations).values(recommendations).returning();
+    return result;
+  }
+
+  async dismissRecommendation(id: string): Promise<boolean> {
+    const result = await db.update(jobRecommendations)
+      .set({ dismissed: true })
+      .where(eq(jobRecommendations.id, id))
+      .returning();
+    return result.length > 0;
+  }
+
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    const result = await db.update(users)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
     return result[0];
   }
 }
