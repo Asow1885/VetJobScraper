@@ -8,7 +8,8 @@ import { storage } from "./storage";
 import { jobScraperService } from "./services/jobScraper";
 import { kazaConnectService } from "./services/kazaConnectApi";
 import { schedulerService } from "./services/scheduler";
-import { insertJobSchema, insertScrapingSourceSchema } from "@shared/schema";
+import { insertJobSchema, insertScrapingSourceSchema, insertUserSchema } from "@shared/schema";
+import { JobMatchingService } from "./services/job-matching";
 
 // Security middleware
 const securityLimiter = rateLimit({
@@ -326,6 +327,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(status);
     } catch (error) {
       res.status(500).json({ message: "Failed to get scheduler status" });
+    }
+  });
+
+  // User profile endpoints
+  app.get("/api/users/:id", [
+    param('id').isString().trim(),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const user = await storage.getUser(id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json(user);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+
+  app.patch("/api/users/:id", [
+    param('id').isString().trim(),
+    body('fullName').optional().isString().trim(),
+    body('email').optional().isEmail(),
+    body('militaryBranch').optional().isString().trim(),
+    body('yearsOfService').optional().isInt({ min: 0, max: 50 }),
+    body('skills').optional().isArray(),
+    body('desiredJobTypes').optional().isArray(),
+    body('desiredLocations').optional().isArray(),
+    body('minSalary').optional().isInt({ min: 0 }),
+    body('clearanceLevel').optional().isString().trim(),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const updates = req.body;
+      const user = await storage.updateUser(id, updates);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json(user);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update user" });
+    }
+  });
+
+  // Job Recommendation endpoints
+  app.get("/api/recommendations/:userId", [
+    param('userId').isString().trim(),
+    query('limit').optional().isInt({ min: 1, max: 100 }),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const recommendations = await storage.getRecommendationsForUser(userId, limit);
+      res.json(recommendations);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch recommendations" });
+    }
+  });
+
+  app.post("/api/recommendations/generate/:userId", [
+    param('userId').isString().trim(),
+    body('limit').optional().isInt({ min: 1, max: 100 }),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const { userId } = req.params;
+      const limit = req.body.limit || 20;
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      // Get all available jobs
+      const jobs = await storage.getJobs({ limit: 1000 });
+
+      // Generate recommendations
+      const recommendations = await JobMatchingService.generateRecommendationsForUser(
+        user,
+        jobs,
+        limit
+      );
+
+      // Save recommendations to database
+      const savedRecommendations = await storage.createRecommendations(recommendations);
+
+      res.json({
+        message: `Generated ${savedRecommendations.length} recommendations`,
+        recommendations: savedRecommendations
+      });
+    } catch (error) {
+      console.error("Error generating recommendations:", error);
+      res.status(500).json({ message: "Failed to generate recommendations" });
+    }
+  });
+
+  app.patch("/api/recommendations/:id/dismiss", [
+    param('id').isString().trim(),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const success = await storage.dismissRecommendation(id);
+      if (!success) {
+        return res.status(404).json({ message: "Recommendation not found" });
+      }
+      res.json({ message: "Recommendation dismissed" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to dismiss recommendation" });
     }
   });
 

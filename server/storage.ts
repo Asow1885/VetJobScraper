@@ -145,7 +145,22 @@ export class MemStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    const user: User = { ...insertUser, id };
+    const user: User = { 
+      ...insertUser, 
+      id,
+      fullName: insertUser.fullName || null,
+      email: insertUser.email || null,
+      militaryBranch: insertUser.militaryBranch || null,
+      yearsOfService: insertUser.yearsOfService || null,
+      skills: insertUser.skills || null,
+      desiredJobTypes: insertUser.desiredJobTypes || null,
+      desiredLocations: insertUser.desiredLocations || null,
+      minSalary: insertUser.minSalary || null,
+      clearanceLevel: insertUser.clearanceLevel || null,
+      preferences: insertUser.preferences || null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
     this.users.set(id, user);
     return user;
   }
@@ -347,10 +362,13 @@ export class MemStorage implements IStorage {
       ...recommendation,
       id,
       createdAt: new Date(),
-      dismissed: recommendation.dismissed || false,
-      matchReasons: recommendation.matchReasons || null,
-      skillMatches: recommendation.skillMatches || null,
-      matchDetails: recommendation.matchDetails || null,
+      dismissed: recommendation.dismissed ?? false,
+      matchReasons: recommendation.matchReasons ?? null,
+      skillMatches: recommendation.skillMatches ?? null,
+      locationMatch: recommendation.locationMatch ?? false,
+      salaryMatch: recommendation.salaryMatch ?? false,
+      veteranMatch: recommendation.veteranMatch ?? false,
+      matchDetails: recommendation.matchDetails ?? null,
     };
     this.recommendations.set(id, rec);
     return rec;
