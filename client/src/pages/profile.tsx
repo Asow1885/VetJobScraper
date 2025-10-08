@@ -54,7 +54,7 @@ export default function Profile() {
   const { data: user, isLoading } = useQuery({
     queryKey: [`/api/users/${DEMO_USER_ID}`],
     retry: false,
-    enabled: false, // Disabled for now since we don't have auth yet
+    enabled: true,
   });
 
   const form = useForm<UserProfileForm>({

@@ -30,7 +30,7 @@ export default function Recommendations() {
   const { data: recommendations = [], isLoading } = useQuery<JobRecommendation[]>({
     queryKey: [`/api/recommendations/${DEMO_USER_ID}`],
     retry: false,
-    enabled: false, // Disabled for demo
+    enabled: true,
   });
 
   const generateMutation = useMutation({
