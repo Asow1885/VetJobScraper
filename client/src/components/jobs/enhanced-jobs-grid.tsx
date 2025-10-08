@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { JobCard } from "./job-card";
 import { JobsTable } from "./jobs-table";
 import { JobsViewToggle, ViewMode } from "./jobs-view-toggle";
@@ -208,6 +208,16 @@ export function EnhancedJobsGrid({
         totalJobs={jobs.length}
         filteredJobs={filteredJobs.length}
         isLoading={isLoading}
+        onClearFilters={() => setFilters({
+          search: "",
+          sources: [],
+          jobTypes: [],
+          locations: [],
+          salaryRange: [0, 200000],
+          veteranFriendly: null,
+          dateRange: { from: null, to: null },
+          status: []
+        })}
       />
 
       {/* Bulk Operations */}

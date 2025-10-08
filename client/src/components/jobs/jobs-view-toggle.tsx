@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { LayoutGrid, List, Filter } from "lucide-react";
+import { LayoutGrid, List, Filter, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export type ViewMode = 'cards' | 'table';
@@ -10,6 +10,7 @@ interface JobsViewToggleProps {
   totalJobs?: number;
   filteredJobs?: number;
   isLoading?: boolean;
+  onClearFilters?: () => void;
 }
 
 export function JobsViewToggle({ 
@@ -17,9 +18,11 @@ export function JobsViewToggle({
   onViewModeChange, 
   totalJobs = 0, 
   filteredJobs,
-  isLoading = false 
+  isLoading = false,
+  onClearFilters
 }: JobsViewToggleProps) {
   const showingCount = filteredJobs ?? totalJobs;
+  const hasFilters = filteredJobs !== undefined && filteredJobs !== totalJobs;
   
   return (
     <div className="flex items-center justify-between gap-4 p-4 bg-muted/30 rounded-lg border">
@@ -28,16 +31,30 @@ export function JobsViewToggle({
           <Filter className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-medium text-muted-foreground">
             Showing {isLoading ? '...' : showingCount.toLocaleString()} 
-            {filteredJobs !== undefined && filteredJobs !== totalJobs && (
+            {hasFilters && (
               <span> of {totalJobs.toLocaleString()}</span>
             )} job{showingCount !== 1 ? 's' : ''}
           </span>
         </div>
         
-        {filteredJobs !== undefined && filteredJobs !== totalJobs && (
-          <Badge variant="secondary" className="text-xs">
-            Filtered
-          </Badge>
+        {hasFilters && (
+          <>
+            <Badge variant="secondary" className="text-xs">
+              Filtered
+            </Badge>
+            {onClearFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClearFilters}
+                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                data-testid="button-clear-filters"
+              >
+                <X className="h-3 w-3 mr-1" />
+                Clear Filters
+              </Button>
+            )}
+          </>
         )}
       </div>
 
