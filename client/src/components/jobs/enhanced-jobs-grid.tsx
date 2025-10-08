@@ -241,10 +241,7 @@ export function EnhancedJobsGrid({
       )}
 
       {/* Jobs Display */}
-      <div data-jobs-count={filteredJobs.length} data-testid="jobs-display-section" className="min-h-[400px] bg-red-50 p-4">
-        <div className="text-2xl font-bold text-red-600 mb-4">
-          DEBUG: {filteredJobs.length} jobs should render here
-        </div>
+      <div data-jobs-count={filteredJobs.length} data-testid="jobs-display-section">
         {filteredJobs.length === 0 ? (
           <EmptyState />
         ) : viewMode === 'cards' ? (
