@@ -8,6 +8,8 @@ import Dashboard from "@/pages/dashboard";
 import Jobs from "@/pages/jobs";
 import Sources from "@/pages/sources";
 import Settings from "@/pages/settings";
+import Profile from "@/pages/profile";
+import Recommendations from "@/pages/recommendations";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -15,6 +17,8 @@ function Router() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/jobs" component={Jobs} />
+      <Route path="/recommendations" component={Recommendations} />
+      <Route path="/profile" component={Profile} />
       <Route path="/sources" component={Sources} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />

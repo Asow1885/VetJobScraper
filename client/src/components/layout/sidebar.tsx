@@ -8,7 +8,9 @@ import {
   Settings, 
   FileText,
   Medal,
-  CheckCircle
+  CheckCircle,
+  Sparkles,
+  User
 } from "lucide-react";
 import { StatusIndicator } from "@/components/ui/status-indicator";
 import { useStats } from "@/hooks/use-stats";
@@ -16,11 +18,10 @@ import { useStats } from "@/hooks/use-stats";
 const navigationItems = [
   { path: "/", label: "Dashboard", icon: BarChart3 },
   { path: "/jobs", label: "Jobs", icon: Briefcase, badge: true },
+  { path: "/recommendations", label: "AI Matches", icon: Sparkles },
+  { path: "/profile", label: "Profile", icon: User },
   { path: "/sources", label: "Sources", icon: Globe },
-  { path: "/kaza-connect", label: "KazaConnect", icon: LinkIcon, status: true },
-  { path: "/analytics", label: "Analytics", icon: BarChart3 },
   { path: "/settings", label: "Settings", icon: Settings },
-  { path: "/logs", label: "Logs", icon: FileText },
 ];
 
 export function Sidebar() {
