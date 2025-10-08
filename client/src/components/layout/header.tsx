@@ -32,21 +32,14 @@ export function Header({ title, description }: HeaderProps) {
       const response = await fetch("/api/jobs");
       const jobs = await response.json();
       
-      const dataStr = JSON.stringify(jobs, null, 2);
-      const dataBlob = new Blob([dataStr], { type: "application/json" });
-      
-      const url = URL.createObjectURL(dataBlob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `jobs-export-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      const { convertJobsToCSV, downloadFile } = await import("@/lib/exportUtils");
+      const csv = convertJobsToCSV(jobs);
+      const timestamp = new Date().toISOString().split('T')[0];
+      downloadFile(csv, `jobs-export-${timestamp}.csv`, 'text/csv');
 
       toast({
         title: "Export Complete",
-        description: "Job data has been exported successfully.",
+        description: `Exported ${jobs.length} jobs to CSV successfully.`,
       });
     } catch (error) {
       toast({

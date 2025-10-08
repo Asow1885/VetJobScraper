@@ -124,10 +124,27 @@ export default function Jobs() {
   };
 
   const handlePostToKaza = async (jobId: string) => {
-    toast({
-      title: "Posted to KazaConnect",
-      description: "Job posted to KazaConnect successfully.",
-    });
+    try {
+      const response = await fetch(`/api/kaza-connect/post/${jobId}`, {
+        method: 'POST',
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to post');
+      }
+
+      refetch(); // Refresh jobs list
+      toast({
+        title: "Posted to KazaConnect",
+        description: "Job posted to KazaConnect successfully.",
+      });
+    } catch (error) {
+      toast({
+        title: "Posting Failed",
+        description: "Failed to post job to KazaConnect. Please try again.",
+        variant: "destructive",
+      });
+    }
   };
 
   // Calculate stats for tabs
@@ -161,7 +178,20 @@ export default function Jobs() {
             Refresh
           </Button>
           
-          <Button variant="outline" data-testid="button-export-jobs">
+          <Button 
+            variant="outline" 
+            onClick={async () => {
+              const { convertJobsToCSV, downloadFile } = await import("@/lib/exportUtils");
+              const csv = convertJobsToCSV(jobs);
+              const timestamp = new Date().toISOString().split('T')[0];
+              downloadFile(csv, `jobs-export-${timestamp}.csv`, 'text/csv');
+              toast({
+                title: "Export Complete",
+                description: `Exported ${jobs.length} jobs to CSV.`,
+              });
+            }}
+            data-testid="button-export-jobs"
+          >
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
