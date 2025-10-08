@@ -200,6 +200,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Scraping endpoints
+  app.post("/api/scrape/run", [
+    scrapingLimiter,
+    body('maxJobs').optional().isInt({ min: 1, max: 100 }).withMessage('maxJobs must be between 1 and 100'),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const { maxJobs = 50 } = req.body;
+      jobScraperService.runScraping(maxJobs);
+      res.json({ message: "Scraping started" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to start scraping" });
+    }
+  });
+
+  app.get("/api/scrape/status", async (req, res) => {
+    try {
+      const status = jobScraperService.getStatus();
+      res.json(status);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get scraping status" });
+    }
+  });
+
+  app.get("/api/scraping/sources", async (req, res) => {
     try {
       const sources = await storage.getScrapingSources();
       res.json(sources);
