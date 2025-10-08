@@ -241,12 +241,13 @@ export function EnhancedJobsGrid({
       )}
 
       {/* Jobs Display */}
-      {filteredJobs.length === 0 ? (
-        <EmptyState />
-      ) : viewMode === 'cards' ? (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredJobs.map((job) => (
+      <div data-jobs-count={filteredJobs.length} data-testid="jobs-display-section">
+        {filteredJobs.length === 0 ? (
+          <EmptyState />
+        ) : viewMode === 'cards' ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              {filteredJobs.map((job) => (
               <div key={job.id} className="relative">
                 <div className="absolute top-3 left-3 z-10">
                   <Checkbox
@@ -272,20 +273,21 @@ export function EnhancedJobsGrid({
                   }}
                 />
               </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      ) : (
-        <JobsTable 
-          jobs={filteredJobs}
-          onApprove={onApprove}
-          onReject={onReject}
-          onView={(jobId) => {
-            const job = jobs.find(j => j.id === jobId);
-            if (job) setPreviewJob(job);
-          }}
-        />
-      )}
+        ) : (
+          <JobsTable 
+            jobs={filteredJobs}
+            onApprove={onApprove}
+            onReject={onReject}
+            onView={(jobId) => {
+              const job = jobs.find(j => j.id === jobId);
+              if (job) setPreviewJob(job);
+            }}
+          />
+        )}
+      </div>
 
       {/* Job Preview Modal */}
       {previewJob && (
