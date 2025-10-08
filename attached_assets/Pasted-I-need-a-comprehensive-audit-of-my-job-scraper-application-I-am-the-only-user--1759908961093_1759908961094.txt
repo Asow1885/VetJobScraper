@@ -1,0 +1,261 @@
+I need a comprehensive audit of my job scraper application. I am the only user.
+
+═══════════════════════════════════════════════════════════════════
+
+PART 1: BUTTON FUNCTIONALITY AUDIT (CRITICAL PRIORITY)
+═══════════════════════════════════════════════════════════════════
+
+Search through ALL files and find EVERY clickable element:
+- All <button> elements
+- All <a> links that act as buttons
+- All form submit buttons
+- Any clickable divs/elements with onClick handlers
+
+For EACH button found, create a detailed report:
+
+| Button Text | File Location | Expected Action | Frontend Handler | Backend Route | Status | Issue & Fix |
+|-------------|---------------|-----------------|------------------|---------------|--------|-------------|
+| Example: "Start Scrape" | index.html line 45 | Trigger scraper | onClick="startScrape()" | POST /api/scrape | ✅ / ⚠️ / ❌ | Details... |
+
+Status Definitions:
+✅ WORKING = Button works perfectly, function exists, route exists, produces expected result
+⚠️ PARTIAL = Button triggers but has bugs/incomplete implementation
+❌ BROKEN = Button does nothing, function missing, route undefined, or throws error
+
+Check these specific button categories:
+
+SCRAPING CONTROLS:
+- "Start Scrape" / "Run Scraper" button
+- "Stop Scrape" button
+- Individual site scraper buttons (Indeed, LinkedIn, etc.)
+- "Schedule Scraper" / "Automate" button
+
+NAVIGATION/VIEWING:
+- "View Jobs" / "Dashboard" / "Home" buttons
+- "Settings" / "Configuration" button
+- Pagination buttons (Next, Previous, Page numbers)
+- "Back" / "Return" buttons
+
+DATA ACTIONS:
+- "Export CSV" button
+- "Export JSON" button
+- "Search" / "Filter" / "Apply Filters" button
+- "Clear Filters" / "Reset" button
+- "Sort" buttons (by date, company, location)
+- "Refresh" / "Reload Data" button
+
+JOB-SPECIFIC ACTIONS:
+- "View Details" / "Open Job" buttons
+- "Open Original" / "View Source" buttons (external link)
+- "Save" / "Favorite" / "Bookmark" buttons
+- "Delete" / "Remove" buttons
+- "Mark as Applied" / "Update Status" buttons
+
+SETTINGS/ADMIN:
+- "Save Settings" / "Update Config" button
+- "Test Connection" button
+- "Clear Database" / "Delete All" button
+- "Update Scrapers" button
+
+For EVERY broken or partial button, provide:
+1. Root cause of the issue
+2. Which file(s) need to be edited
+3. Exact code to add/fix (complete implementation)
+4. Priority level (Critical / Important / Nice-to-have)
+
+═══════════════════════════════════════════════════════════════════
+
+PART 2: SCRAPER FUNCTIONALITY AUDIT
+═══════════════════════════════════════════════════════════════════
+
+SCRAPER INVENTORY:
+1. Which job sites am I scraping? (Indeed, LinkedIn, Glassdoor, etc.)
+2. Where is each scraping function located? (file names and functions)
+3. What scraping technology is used? (Puppeteer, Cheerio, Playwright, etc.)
+4. Are there any dependencies missing or broken?
+
+SCRAPER TESTING:
+For each scraper, test and report:
+- Can it access the target website? (or is it blocked?)
+- Does it successfully extract job data?
+- Are CSS selectors still valid? (websites change HTML)
+- Any errors or crashes when running?
+- Rate limiting or anti-bot detection issues?
+
+SCRAPER TRIGGERS:
+- How is scraper triggered? (manual button, API call, scheduled task)
+- Does manual trigger work?
+- If scheduled: Is cron/scheduler configured and actually running?
+- When did scraper last run successfully? (timestamp)
+- Show me the 5 most recently scraped jobs with timestamps
+
+═══════════════════════════════════════════════════════════════════
+
+PART 3: DATA STORAGE & QUALITY AUDIT
+═══════════════════════════════════════════════════════════════════
+
+DATABASE CONFIGURATION:
+1. What database am I using? (SQLite, PostgreSQL, MongoDB, JSON file, CSV)
+2. Show me the complete database schema for jobs
+3. What fields are captured? (title, company, salary, location, url, date, etc.)
+4. Are there any missing or null fields that shouldn't be?
+
+DATA QUALITY METRICS:
+- Total jobs currently in database: ?
+- Jobs added today: ?
+- Jobs added this week: ?
+- Jobs added this month: ?
+- Oldest job in database: ? (date)
+- Newest job in database: ? (date)
+- Average age of jobs: ?
+
+COMPLETENESS CHECK:
+- How many jobs missing titles?
+- How many jobs missing company names?
+- How many jobs missing salaries?
+- How many jobs missing locations?
+- How many jobs missing source URLs?
+
+DUPLICATE ANALYSIS:
+- Are there duplicate job postings?
+- How are duplicates detected/prevented?
+- Should old duplicates be cleaned up?
+
+SOURCE BREAKDOWN:
+- Jobs from Indeed: ?
+- Jobs from LinkedIn: ?
+- Jobs from [other sources]: ?
+- Which scrapers are most successful?
+- Which scrapers are failing?
+
+═══════════════════════════════════════════════════════════════════
+
+PART 4: USER INTERFACE & DATA FLOW AUDIT
+═══════════════════════════════════════════════════════════════════
+
+ROUTES & PAGES:
+List all available routes/pages:
+- Homepage/Dashboard: URL and status
+- View Jobs page: URL and status
+- Job details page: URL and status
+- Settings page: URL and status
+- Any other pages: URL and status
+
+DATA FLOW VERIFICATION:
+Trace the complete flow:
+1. User clicks "Start Scrape" → What happens?
+2. Scraper runs → Where does data go?
+3. Data is stored → In what format and location?
+4. User views jobs → How is data retrieved and displayed?
+5. User filters/searches → Does it query database correctly?
+6. User exports data → Does download work?
+
+UI FUNCTIONALITY:
+- Can I see all scraped jobs on a page? (yes/no)
+- Does search/filter work? (yes/no + details)
+- Does pagination work? (yes/no)
+- Can I view individual job details? (yes/no)
+- Can I export data? (yes/no + format)
+- Are there any broken links or 404 pages?
+
+═══════════════════════════════════════════════════════════════════
+
+PART 5: ERROR DETECTION & DEBUGGING
+═══════════════════════════════════════════════════════════════════
+
+Find and report ALL issues in these categories:
+
+SCRAPER ERRORS:
+- Scrapers that fail or crash
+- Websites blocking requests (403, 429 errors)
+- Invalid CSS selectors (website structure changed)
+- Timeout errors
+- Network errors
+
+DATABASE ERRORS:
+- Connection issues
+- Write permission errors
+- Query errors
+- Schema mismatches
+
+UI ERRORS:
+- Buttons that throw JavaScript errors
+- Pages that fail to load
+- Console errors (list all)
+- Broken forms
+- Missing error handling/user feedback
+
+ORPHANED CODE:
+- Functions defined but never called
+- Routes defined but never accessed
+- Buttons that reference non-existent functions
+- Dead code that should be removed
+
+INCOMPLETE IMPLEMENTATIONS:
+- Functions with TODO comments
+- Empty function bodies: function() { }
+- Placeholder code
+- Features marked "Coming soon"
+
+═══════════════════════════════════════════════════════════════════
+
+PART 6: AUTOMATION & SCHEDULING
+═══════════════════════════════════════════════════════════════════
+
+SCHEDULER AUDIT:
+- Is there a cron job or scheduler configured?
+- What's the schedule? (hourly, daily, weekly, never)
+- Is the scheduler actually running?
+- When did it last execute?
+- Are there any scheduler error logs?
+- Does it successfully scrape when triggered automatically?
+
+═══════════════════════════════════════════════════════════════════
+
+PART 7: COMPREHENSIVE REPORT & FIX RECOMMENDATIONS
+═══════════════════════════════════════════════════════════════════
+
+Provide a final summary report:
+
+✅ WORKING FEATURES (List everything that works perfectly):
+- Feature name → Status → Details
+
+⚠️ PARTIALLY WORKING (List features with bugs):
+- Feature name → What works → What doesn't → How to fix
+
+❌ NOT WORKING (List broken features):
+- Feature name → Error/Issue → Root cause → Fix needed
+
+🔴 CRITICAL FIXES (App unusable without these):
+Priority 1:
+- Issue description
+- File to edit: filename.js line X
+- Code to add/fix: [exact code]
+- Expected result after fix
+
+Priority 2:
+- [same format]
+
+🟡 IMPORTANT FIXES (Core features broken):
+[same format as critical]
+
+🟢 NICE TO HAVE (Minor improvements):
+[same format as critical]
+
+HEALTH SCORE (Rate each 1-5):
+- Button functionality: ?/5
+- Scraper functionality: ?/5
+- Data storage: ?/5
+- User interface: ?/5
+- Automation: ?/5
+- Overall app health: ?/5
+
+TESTING CHECKLIST FOR ME:
+Create a manual testing script I can follow to verify fixes:
+1. Open app at http://localhost:PORT
+2. Test button X → Expected result: Y
+3. [Continue for all critical features]
+
+═══════════════════════════════════════════════════════════════════
+
+Please analyze every file in my project and provide this complete audit with specific, actionable fixes for every issue found.
