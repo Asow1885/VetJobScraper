@@ -52,6 +52,19 @@ app.use((req, res, next) => {
   // doesn't interfere with the other routes
   if (app.get("env") === "development") {
     await setupVite(app, server);
+    
+    // Override all cache headers AFTER Vite to prevent Replit CDN caching
+    app.use((req, res, next) => {
+      const originalEnd = res.end.bind(res);
+      res.end = function(chunk?: any, encoding?: any, callback?: any) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        res.setHeader('Surrogate-Control', 'no-store');
+        return originalEnd(chunk, encoding, callback);
+      } as any;
+      next();
+    });
   } else {
     serveStatic(app);
   }
