@@ -47,7 +47,7 @@ const handleValidationErrors = (req: Request, res: Response, next: NextFunction)
 export async function registerRoutes(app: Express): Promise<Server> {
   // Apply security middleware  
   app.use(helmet({
-    contentSecurityPolicy: {
+    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
       directives: {
         defaultSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
@@ -56,7 +56,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         imgSrc: ["'self'", "data:", "https:"],
         connectSrc: ["'self'"],
       },
-    },
+    } : false,  // Disable CSP in development to allow Vite
   }));
   app.use(securityLimiter);
   app.use(speedLimiter);
