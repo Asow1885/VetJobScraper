@@ -10,6 +10,7 @@ import { kazaConnectService } from "./services/kazaConnectApi";
 import { schedulerService } from "./services/scheduler";
 import { insertJobSchema, insertScrapingSourceSchema, insertUserSchema } from "@shared/schema";
 import { JobMatchingService } from "./services/job-matching";
+import path from "path";
 
 // Security middleware
 const securityLimiter = rateLimit({
@@ -45,6 +46,16 @@ const handleValidationErrors = (req: Request, res: Response, next: NextFunction)
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Download endpoint for project zip
+  app.get("/download-project", (req: Request, res: Response) => {
+    const zipPath = path.join(process.cwd(), "project-export.zip");
+    res.download(zipPath, "project-export.zip", (err) => {
+      if (err) {
+        res.status(404).json({ error: "File not found" });
+      }
+    });
+  });
+
   // Apply security middleware  
   app.use(helmet({
     contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
