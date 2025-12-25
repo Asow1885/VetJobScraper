@@ -47,7 +47,7 @@ const handleValidationErrors = (req: Request, res: Response, next: NextFunction)
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Download endpoint for project zip
-  app.get("/download-project", (req: Request, res: Response) => {
+  app.get("/api/download-project", (req: Request, res: Response) => {
     const zipPath = path.join(process.cwd(), "project-export.zip");
     res.download(zipPath, "project-export.zip", (err) => {
       if (err) {
