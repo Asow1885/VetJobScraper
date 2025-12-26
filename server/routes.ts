@@ -11,6 +11,15 @@ import { schedulerService } from "./services/scheduler";
 import { insertJobSchema, insertScrapingSourceSchema, insertUserSchema } from "@shared/schema";
 import { JobMatchingService } from "./services/job-matching";
 import path from "path";
+import { 
+  AuthRequest, 
+  generateToken, 
+  hashPassword, 
+  comparePassword, 
+  requireAuth, 
+  requireAdmin, 
+  optionalAuth 
+} from "./auth";
 
 // Security middleware
 const securityLimiter = rateLimit({
@@ -25,6 +34,12 @@ const scrapingLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
   max: 5, // limit scraping to 5 requests per 5 minutes
   message: { error: "Scraping rate limit exceeded, please wait before trying again" },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // limit auth attempts to 10 per 15 minutes
+  message: { error: "Too many authentication attempts, please try again later" },
 });
 
 const speedLimiter = slowDown({
@@ -72,6 +87,201 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use(securityLimiter);
   app.use(speedLimiter);
   
+  // ========== Authentication Endpoints ==========
+  
+  app.post("/api/auth/register", [
+    authLimiter,
+    body('username').isString().trim().isLength({ min: 3, max: 50 }).escape(),
+    body('password').isString().isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+    body('email').optional().isEmail().normalizeEmail(),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const { username, password, email } = req.body;
+      
+      const existingUser = await storage.getUserByUsername(username);
+      if (existingUser) {
+        return res.status(409).json({ error: "Username already exists" });
+      }
+      
+      const passwordHash = await hashPassword(password);
+      const user = await storage.createUser({
+        username,
+        passwordHash,
+        email: email || null,
+        role: 'user',
+        isActive: true,
+        emailVerified: false,
+      });
+      
+      const token = generateToken({
+        id: user.id,
+        username: user.username,
+        email: user.email || '',
+        role: user.role as 'admin' | 'user'
+      });
+      
+      res.status(201).json({
+        message: "Registration successful",
+        user: { id: user.id, username: user.username, email: user.email, role: user.role },
+        token
+      });
+    } catch (error) {
+      console.error("Registration error:", error);
+      res.status(500).json({ error: "Failed to register user" });
+    }
+  });
+
+  app.post("/api/auth/login", [
+    authLimiter,
+    body('username').isString().trim().escape(),
+    body('password').isString(),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const { username, password } = req.body;
+      
+      const user = await storage.getUserByUsername(username);
+      if (!user) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+      
+      if (!user.isActive) {
+        return res.status(403).json({ error: "Account is deactivated" });
+      }
+      
+      const isValidPassword = await comparePassword(password, user.passwordHash);
+      if (!isValidPassword) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+      
+      await storage.updateUser(user.id, { lastLogin: new Date() });
+      
+      const token = generateToken({
+        id: user.id,
+        username: user.username,
+        email: user.email || '',
+        role: user.role as 'admin' | 'user'
+      });
+      
+      res.json({
+        message: "Login successful",
+        user: { id: user.id, username: user.username, email: user.email, role: user.role },
+        token
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ error: "Failed to login" });
+    }
+  });
+
+  app.get("/api/auth/me", requireAuth, async (req: AuthRequest, res: Response) => {
+    try {
+      const user = await storage.getUser(req.user!.id);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      const { passwordHash, ...safeUser } = user;
+      res.json(safeUser);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch user profile" });
+    }
+  });
+
+  app.patch("/api/auth/password", [
+    requireAuth,
+    body('currentPassword').isString(),
+    body('newPassword').isString().isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+    handleValidationErrors
+  ], async (req: AuthRequest, res: Response) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      
+      const user = await storage.getUser(req.user!.id);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      const isValidPassword = await comparePassword(currentPassword, user.passwordHash);
+      if (!isValidPassword) {
+        return res.status(401).json({ error: "Current password is incorrect" });
+      }
+      
+      const newPasswordHash = await hashPassword(newPassword);
+      await storage.updateUserPassword(user.id, newPasswordHash);
+      
+      res.json({ message: "Password updated successfully" });
+    } catch (error) {
+      console.error("Password change error:", error);
+      res.status(500).json({ error: "Failed to update password" });
+    }
+  });
+
+  // ========== Admin User Management ==========
+  
+  app.get("/api/admin/users", requireAuth, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const users = await storage.getAllUsers();
+      const safeUsers = users.map(({ passwordHash, ...user }) => user);
+      res.json(safeUsers);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/role", [
+    requireAuth,
+    requireAdmin,
+    param('id').isString().trim(),
+    body('role').isIn(['admin', 'user']),
+    handleValidationErrors
+  ], async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { role } = req.body;
+      
+      if (id === req.user!.id) {
+        return res.status(400).json({ error: "Cannot change your own role" });
+      }
+      
+      const user = await storage.updateUser(id, { role });
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      res.json({ message: "User role updated", user: { id: user.id, username: user.username, role: user.role } });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update user role" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/status", [
+    requireAuth,
+    requireAdmin,
+    param('id').isString().trim(),
+    body('isActive').isBoolean(),
+    handleValidationErrors
+  ], async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { isActive } = req.body;
+      
+      if (id === req.user!.id) {
+        return res.status(400).json({ error: "Cannot deactivate your own account" });
+      }
+      
+      const user = await storage.updateUser(id, { isActive });
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      res.json({ message: `User ${isActive ? 'activated' : 'deactivated'}`, user: { id: user.id, username: user.username, isActive: user.isActive } });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update user status" });
+    }
+  });
+
   // Job endpoints
   app.get("/api/jobs", [
     query('source').optional().isString().trim().escape(),

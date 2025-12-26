@@ -98,6 +98,13 @@ export const insertUserSchema = createInsertSchema(users).omit({
   lastLogin: true,
 });
 
+export const createUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastLogin: true,
+});
+
 export const insertJobSchema = createInsertSchema(jobs).omit({
   id: true,
   scrapedDate: true,
@@ -125,6 +132,7 @@ export const insertJobRecommendationSchema = createInsertSchema(jobRecommendatio
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type CreateUser = z.infer<typeof createUserSchema>;
 
 export type Job = typeof jobs.$inferSelect;
 export type InsertJob = z.infer<typeof insertJobSchema>;

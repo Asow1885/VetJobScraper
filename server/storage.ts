@@ -1,6 +1,7 @@
 import { 
   type User, 
   type InsertUser, 
+  type CreateUser,
   type Job, 
   type InsertJob,
   type ScrapingSource,
@@ -26,7 +27,10 @@ export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  createUser(user: CreateUser): Promise<User>;
+  updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
+  updateUserPassword(id: string, passwordHash: string): Promise<boolean>;
+  getAllUsers(): Promise<User[]>;
 
   // Jobs
   getJobs(filters?: { 
@@ -67,7 +71,6 @@ export interface IStorage {
   createRecommendation(recommendation: InsertJobRecommendation): Promise<JobRecommendation>;
   createRecommendations(recommendations: InsertJobRecommendation[]): Promise<JobRecommendation[]>;
   dismissRecommendation(id: string): Promise<boolean>;
-  updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
 }
 
 export class MemStorage implements IStorage {
@@ -143,11 +146,16 @@ export class MemStorage implements IStorage {
     );
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async createUser(insertUser: CreateUser): Promise<User> {
     const id = randomUUID();
     const user: User = { 
       ...insertUser, 
       id,
+      passwordHash: insertUser.passwordHash,
+      role: insertUser.role || 'user',
+      isActive: insertUser.isActive ?? true,
+      emailVerified: insertUser.emailVerified ?? false,
+      lastLogin: null,
       fullName: insertUser.fullName || null,
       email: insertUser.email || null,
       militaryBranch: insertUser.militaryBranch || null,
@@ -163,6 +171,27 @@ export class MemStorage implements IStorage {
     };
     this.users.set(id, user);
     return user;
+  }
+
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    const user = this.users.get(id);
+    if (!user) return undefined;
+    const updatedUser = { ...user, ...updates, updatedAt: new Date() };
+    this.users.set(id, updatedUser);
+    return updatedUser;
+  }
+
+  async updateUserPassword(id: string, passwordHash: string): Promise<boolean> {
+    const user = this.users.get(id);
+    if (!user) return false;
+    user.passwordHash = passwordHash;
+    user.updatedAt = new Date();
+    this.users.set(id, user);
+    return true;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return Array.from(this.users.values());
   }
 
   // Jobs
@@ -391,16 +420,6 @@ export class MemStorage implements IStorage {
     }
     return false;
   }
-
-  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
-    const user = this.users.get(id);
-    if (user) {
-      const updated = { ...user, ...updates, updatedAt: new Date() };
-      this.users.set(id, updated);
-      return updated;
-    }
-    return undefined;
-  }
 }
 
 export class DbStorage implements IStorage {
@@ -451,9 +470,23 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
+  async createUser(insertUser: CreateUser): Promise<User> {
     const result = await db.insert(users).values(insertUser).returning();
     return result[0];
+  }
+
+  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
+    const result = await db.update(users).set({ ...updates, updatedAt: new Date() }).where(eq(users.id, id)).returning();
+    return result[0];
+  }
+
+  async updateUserPassword(id: string, passwordHash: string): Promise<boolean> {
+    const result = await db.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users);
   }
 
   // Jobs
@@ -614,14 +647,6 @@ export class DbStorage implements IStorage {
       .where(eq(jobRecommendations.id, id))
       .returning();
     return result.length > 0;
-  }
-
-  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
-    const result = await db.update(users)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(users.id, id))
-      .returning();
-    return result[0];
   }
 }
 
