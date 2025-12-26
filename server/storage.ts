@@ -27,10 +27,23 @@ export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByUsernameOrEmail(usernameOrEmail: string): Promise<User | undefined>;
   createUser(user: CreateUser): Promise<User>;
+  createUserWithHash(data: {
+    username: string;
+    email: string;
+    password_hash: string;
+    fullName?: string;
+    role?: string;
+  }): Promise<User>;
   updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
   updateUserPassword(id: string, passwordHash: string): Promise<boolean>;
+  updateUserLastLogin(id: string): Promise<void>;
+  deactivateUser(id: string): Promise<boolean>;
+  activateUser(id: string): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
+  getUserCount(): Promise<number>;
 
   // Jobs
   getJobs(filters?: { 
@@ -146,6 +159,18 @@ export class MemStorage implements IStorage {
     );
   }
 
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(
+      (user) => user.email === email,
+    );
+  }
+
+  async getUserByUsernameOrEmail(usernameOrEmail: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(
+      (user) => user.username === usernameOrEmail || user.email === usernameOrEmail,
+    );
+  }
+
   async createUser(insertUser: CreateUser): Promise<User> {
     const id = randomUUID();
     const user: User = { 
@@ -173,6 +198,39 @@ export class MemStorage implements IStorage {
     return user;
   }
 
+  async createUserWithHash(data: {
+    username: string;
+    email: string;
+    password_hash: string;
+    fullName?: string;
+    role?: string;
+  }): Promise<User> {
+    const id = randomUUID();
+    const user: User = {
+      id,
+      username: data.username,
+      passwordHash: data.password_hash,
+      role: data.role || 'user',
+      isActive: true,
+      emailVerified: false,
+      lastLogin: null,
+      fullName: data.fullName || null,
+      email: data.email,
+      militaryBranch: null,
+      yearsOfService: null,
+      skills: null,
+      desiredJobTypes: null,
+      desiredLocations: null,
+      minSalary: null,
+      clearanceLevel: null,
+      preferences: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.users.set(id, user);
+    return user;
+  }
+
   async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
     const user = this.users.get(id);
     if (!user) return undefined;
@@ -190,8 +248,38 @@ export class MemStorage implements IStorage {
     return true;
   }
 
+  async updateUserLastLogin(id: string): Promise<void> {
+    const user = this.users.get(id);
+    if (user) {
+      user.lastLogin = new Date();
+      this.users.set(id, user);
+    }
+  }
+
+  async deactivateUser(id: string): Promise<boolean> {
+    const user = this.users.get(id);
+    if (!user) return false;
+    user.isActive = false;
+    user.updatedAt = new Date();
+    this.users.set(id, user);
+    return true;
+  }
+
+  async activateUser(id: string): Promise<boolean> {
+    const user = this.users.get(id);
+    if (!user) return false;
+    user.isActive = true;
+    user.updatedAt = new Date();
+    this.users.set(id, user);
+    return true;
+  }
+
   async getAllUsers(): Promise<User[]> {
     return Array.from(this.users.values());
+  }
+
+  async getUserCount(): Promise<number> {
+    return this.users.size;
   }
 
   // Jobs
@@ -470,8 +558,39 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.email, email));
+    return result[0];
+  }
+
+  async getUserByUsernameOrEmail(usernameOrEmail: string): Promise<User | undefined> {
+    const byUsername = await db.select().from(users).where(eq(users.username, usernameOrEmail));
+    if (byUsername[0]) return byUsername[0];
+    const byEmail = await db.select().from(users).where(eq(users.email, usernameOrEmail));
+    return byEmail[0];
+  }
+
   async createUser(insertUser: CreateUser): Promise<User> {
     const result = await db.insert(users).values(insertUser).returning();
+    return result[0];
+  }
+
+  async createUserWithHash(data: {
+    username: string;
+    email: string;
+    password_hash: string;
+    fullName?: string;
+    role?: string;
+  }): Promise<User> {
+    const result = await db.insert(users).values({
+      username: data.username,
+      email: data.email,
+      passwordHash: data.password_hash,
+      fullName: data.fullName || null,
+      role: data.role || 'user',
+      isActive: true,
+      emailVerified: false,
+    }).returning();
     return result[0];
   }
 
@@ -485,8 +604,27 @@ export class DbStorage implements IStorage {
     return (result.rowCount ?? 0) > 0;
   }
 
+  async updateUserLastLogin(id: string): Promise<void> {
+    await db.update(users).set({ lastLogin: new Date() }).where(eq(users.id, id));
+  }
+
+  async deactivateUser(id: string): Promise<boolean> {
+    const result = await db.update(users).set({ isActive: false, updatedAt: new Date() }).where(eq(users.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async activateUser(id: string): Promise<boolean> {
+    const result = await db.update(users).set({ isActive: true, updatedAt: new Date() }).where(eq(users.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
   async getAllUsers(): Promise<User[]> {
     return await db.select().from(users);
+  }
+
+  async getUserCount(): Promise<number> {
+    const result = await db.select({ count: count() }).from(users);
+    return result[0]?.count || 0;
   }
 
   // Jobs
