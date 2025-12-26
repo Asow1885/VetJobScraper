@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
 import slowDown from "express-slow-down";
 import helmet from "helmet";
+import cors from "cors";
 import { body, param, query, validationResult } from "express-validator";
 import { storage } from "./storage";
 import { jobScraperService } from "./services/jobScraper";
@@ -10,45 +11,45 @@ import { kazaConnectService } from "./services/kazaConnectApi";
 import { schedulerService } from "./services/scheduler";
 import { insertJobSchema, insertScrapingSourceSchema, insertUserSchema } from "@shared/schema";
 import { JobMatchingService } from "./services/job-matching";
+import { requireAuth, requireAdmin, generateToken, hashPassword, comparePassword, type AuthRequest } from "./auth";
 import path from "path";
-import { 
-  AuthRequest, 
-  generateToken, 
-  hashPassword, 
-  comparePassword, 
-  requireAuth, 
-  requireAdmin, 
-  optionalAuth 
-} from "./auth";
 
-// Security middleware
 const securityLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // limit each IP to 1000 requests per windowMs (more permissive for development)
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
   message: { error: "Too many requests, please try again later" },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 const scrapingLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 5, // limit scraping to 5 requests per 5 minutes
+  windowMs: 5 * 60 * 1000,
+  max: 5,
   message: { error: "Scraping rate limit exceeded, please wait before trying again" },
-});
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // limit auth attempts to 10 per 15 minutes
-  message: { error: "Too many authentication attempts, please try again later" },
 });
 
 const speedLimiter = slowDown({
   windowMs: 15 * 60 * 1000,
-  delayAfter: 500, // increased from 50 to 500
-  delayMs: () => 100, // reduced from 500ms to 100ms
+  delayAfter: 500,
+  delayMs: () => 100,
 });
 
-// Validation helpers
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many authentication attempts' },
+});
+
+const corsOptions = {
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || [
+    'http://localhost:5000',
+    'http://localhost:3000',
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
 const handleValidationErrors = (req: Request, res: Response, next: NextFunction) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -61,7 +62,8 @@ const handleValidationErrors = (req: Request, res: Response, next: NextFunction)
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Download endpoint for project zip
+  app.use(cors(corsOptions));
+  
   app.get("/api/download-project", (req: Request, res: Response) => {
     const zipPath = path.join(process.cwd(), "project-export.zip");
     res.download(zipPath, "project-export.zip", (err) => {
@@ -71,7 +73,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // Apply security middleware  
   app.use(helmet({
     contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
       directives: {
@@ -82,53 +83,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         imgSrc: ["'self'", "data:", "https:"],
         connectSrc: ["'self'"],
       },
-    } : false,  // Disable CSP in development to allow Vite
+    } : false,
   }));
   app.use(securityLimiter);
   app.use(speedLimiter);
-  
-  // ========== Authentication Endpoints ==========
-  
+
   app.post("/api/auth/register", [
     authLimiter,
-    body('username').isString().trim().isLength({ min: 3, max: 50 }).escape(),
-    body('password').isString().isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
-    body('email').optional().isEmail().normalizeEmail(),
-    handleValidationErrors
+    body('username').trim().isLength({ min: 3, max: 50 }).isAlphanumeric(),
+    body('email').isEmail().normalizeEmail(),
+    body('password').isLength({ min: 8, max: 100 }).matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).withMessage('Password must contain uppercase, lowercase, and number'),
+    body('fullName').optional().trim().isLength({ max: 255 }).escape(),
+    handleValidationErrors,
   ], async (req: Request, res: Response) => {
     try {
-      const { username, password, email } = req.body;
-      
-      const existingUser = await storage.getUserByUsername(username);
+      const { username, email, password, fullName } = req.body;
+      const existingUser = await storage.getUserByEmail(email);
       if (existingUser) {
-        return res.status(409).json({ error: "Username already exists" });
+        return res.status(400).json({ error: 'Email already registered' });
       }
-      
-      const passwordHash = await hashPassword(password);
-      const user = await storage.createUser({
-        username,
-        passwordHash,
-        email: email || null,
-        role: 'user',
-        isActive: true,
-        emailVerified: false,
-      });
-      
-      const token = generateToken({
-        id: user.id,
-        username: user.username,
-        email: user.email || '',
-        role: user.role as 'admin' | 'user'
-      });
-      
-      res.status(201).json({
-        message: "Registration successful",
-        user: { id: user.id, username: user.username, email: user.email, role: user.role },
-        token
-      });
+      const existingUsername = await storage.getUserByUsername(username);
+      if (existingUsername) {
+        return res.status(400).json({ error: 'Username already taken' });
+      }
+      const password_hash = await hashPassword(password);
+      const allUsers = await storage.getAllUsers?.() || [];
+      const role = allUsers.length === 0 ? 'admin' : 'user';
+      const user = await storage.createUserWithHash({ username, email, password_hash, fullName, role });
+      const token = generateToken({ id: user.id, username: user.username, email: user.email!, role: user.role as 'admin' | 'user' });
+      res.status(201).json({ message: 'Registration successful', user: { id: user.id, username: user.username, email: user.email, role: user.role }, token });
     } catch (error) {
-      console.error("Registration error:", error);
-      res.status(500).json({ error: "Failed to register user" });
+      console.error('Registration error:', error);
+      res.status(500).json({ error: 'Registration failed' });
     }
   });
 
@@ -136,153 +122,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
     authLimiter,
     body('email').isEmail().normalizeEmail(),
     body('password').notEmpty(),
-    handleValidationErrors
+    handleValidationErrors,
   ], async (req: Request, res: Response) => {
     try {
       const { email, password } = req.body;
-      
       const user = await storage.getUserByEmail(email);
-      if (!user) {
-        return res.status(401).json({ error: "Invalid credentials" });
+      if (!user || !user.passwordHash) {
+        return res.status(401).json({ error: 'Invalid email or password' });
       }
-      
-      if (!user.isActive) {
-        return res.status(403).json({ error: "Account is deactivated" });
-      }
-      
       const isValidPassword = await comparePassword(password, user.passwordHash);
       if (!isValidPassword) {
-        return res.status(401).json({ error: "Invalid credentials" });
+        return res.status(401).json({ error: 'Invalid email or password' });
       }
-      
-      await storage.updateUser(user.id, { lastLogin: new Date() });
-      
-      const token = generateToken({
-        id: user.id,
-        username: user.username,
-        email: user.email || '',
-        role: user.role as 'admin' | 'user'
-      });
-      
-      res.json({
-        message: "Login successful",
-        user: { id: user.id, username: user.username, email: user.email, role: user.role },
-        token
-      });
+      if (!user.isActive) {
+        return res.status(403).json({ error: 'Account is inactive' });
+      }
+      await storage.updateUserLastLogin(user.id);
+      const token = generateToken({ id: user.id, username: user.username, email: user.email!, role: user.role as 'admin' | 'user' });
+      res.json({ message: 'Login successful', user: { id: user.id, username: user.username, email: user.email, role: user.role, fullName: user.fullName }, token });
     } catch (error) {
-      console.error("Login error:", error);
-      res.status(500).json({ error: "Failed to login" });
+      console.error('Login error:', error);
+      res.status(500).json({ error: 'Login failed' });
     }
   });
 
-  app.get("/api/auth/me", requireAuth, async (req: AuthRequest, res: Response) => {
-    try {
-      const user = await storage.getUser(req.user!.id);
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
-      }
-      
-      const { passwordHash, ...safeUser } = user;
-      res.json(safeUser);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch user profile" });
-    }
+  app.get("/api/auth/me", requireAuth, (req: AuthRequest, res: Response) => {
+    res.json({ user: req.user });
   });
 
-  app.patch("/api/auth/password", [
-    requireAuth,
-    body('currentPassword').isString(),
-    body('newPassword').isString().isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
-    handleValidationErrors
-  ], async (req: AuthRequest, res: Response) => {
-    try {
-      const { currentPassword, newPassword } = req.body;
-      
-      const user = await storage.getUser(req.user!.id);
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
-      }
-      
-      const isValidPassword = await comparePassword(currentPassword, user.passwordHash);
-      if (!isValidPassword) {
-        return res.status(401).json({ error: "Current password is incorrect" });
-      }
-      
-      const newPasswordHash = await hashPassword(newPassword);
-      await storage.updateUserPassword(user.id, newPasswordHash);
-      
-      res.json({ message: "Password updated successfully" });
-    } catch (error) {
-      console.error("Password change error:", error);
-      res.status(500).json({ error: "Failed to update password" });
-    }
+  app.post("/api/auth/logout", requireAuth, (req: AuthRequest, res: Response) => {
+    res.json({ message: 'Logout successful' });
   });
 
-  // ========== Admin User Management ==========
-  
-  app.get("/api/admin/users", requireAuth, requireAdmin, async (req: AuthRequest, res: Response) => {
-    try {
-      const users = await storage.getAllUsers();
-      const safeUsers = users.map(({ passwordHash, ...user }) => user);
-      res.json(safeUsers);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch users" });
-    }
-  });
-
-  app.patch("/api/admin/users/:id/role", [
-    requireAuth,
-    requireAdmin,
-    param('id').isString().trim(),
-    body('role').isIn(['admin', 'user']),
-    handleValidationErrors
-  ], async (req: AuthRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      const { role } = req.body;
-      
-      if (id === req.user!.id) {
-        return res.status(400).json({ error: "Cannot change your own role" });
-      }
-      
-      const user = await storage.updateUser(id, { role });
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
-      }
-      
-      res.json({ message: "User role updated", user: { id: user.id, username: user.username, role: user.role } });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update user role" });
-    }
-  });
-
-  app.patch("/api/admin/users/:id/status", [
-    requireAuth,
-    requireAdmin,
-    param('id').isString().trim(),
-    body('isActive').isBoolean(),
-    handleValidationErrors
-  ], async (req: AuthRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      const { isActive } = req.body;
-      
-      if (id === req.user!.id) {
-        return res.status(400).json({ error: "Cannot deactivate your own account" });
-      }
-      
-      const user = await storage.updateUser(id, { isActive });
-      if (!user) {
-        return res.status(404).json({ error: "User not found" });
-      }
-      
-      res.json({ message: `User ${isActive ? 'activated' : 'deactivated'}`, user: { id: user.id, username: user.username, isActive: user.isActive } });
-    } catch (error) {
-      res.status(500).json({ error: "Failed to update user status" });
-    }
-  });
-
-  // Job endpoints
   app.get("/api/jobs", [
     query('source').optional().isString().trim().escape(),
     query('status').optional().isString().trim().escape(),
@@ -321,16 +192,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/jobs", [
+  app.post("/api/jobs", requireAuth, requireAdmin, [
     body('title').isString().trim().isLength({ min: 1, max: 500 }).escape(),
     body('company').isString().trim().isLength({ min: 1, max: 200 }).escape(),
     body('location').isString().trim().isLength({ min: 1, max: 200 }).escape(),
-    body('url').isURL().normalizeEmail(),
+    body('url').isURL(),
     body('source').isString().trim().escape(),
     body('description').optional().isString().trim().isLength({ max: 10000 }),
     body('veteranKeywords').optional().isArray(),
     handleValidationErrors
-  ], async (req: Request, res: Response) => {
+  ], async (req: AuthRequest, res: Response) => {
     try {
       const validatedData = insertJobSchema.parse(req.body);
       const job = await storage.createJob(validatedData);
@@ -340,44 +211,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Job approval endpoints
-  app.patch("/api/jobs/:id/approve", [
-    param('id').isUUID().withMessage('Invalid job ID format'),
-    handleValidationErrors
-  ], async (req: Request, res: Response) => {
-    try {
-      const job = await storage.updateJobStatus(req.params.id, 'approved');
-      if (!job) {
-        return res.status(404).json({ message: "Job not found" });
-      }
-      res.json({ message: "Job approved successfully", job });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to approve job" });
-    }
-  });
-
-  app.patch("/api/jobs/:id/reject", [
-    param('id').isUUID().withMessage('Invalid job ID format'),
-    handleValidationErrors
-  ], async (req: Request, res: Response) => {
-    try {
-      const job = await storage.updateJobStatus(req.params.id, 'rejected');
-      if (!job) {
-        return res.status(404).json({ message: "Job not found" });
-      }
-      res.json({ message: "Job rejected successfully", job });
-    } catch (error) {
-      res.status(500).json({ message: "Failed to reject job" });
-    }
-  });
-
-  app.patch("/api/jobs/:id", [
+  app.patch("/api/jobs/:id", requireAuth, requireAdmin, [
     param('id').isUUID().withMessage('Invalid job ID format'),
     body('status').optional().isIn(['pending', 'approved', 'rejected', 'posted', 'failed']),
     body('title').optional().isString().trim().isLength({ min: 1, max: 500 }).escape(),
     body('company').optional().isString().trim().isLength({ min: 1, max: 200 }).escape(),
     handleValidationErrors
-  ], async (req: Request, res: Response) => {
+  ], async (req: AuthRequest, res: Response) => {
     try {
       const job = await storage.updateJob(req.params.id, req.body);
       if (!job) {
@@ -389,10 +229,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/jobs/:id", [
+  app.delete("/api/jobs/:id", requireAuth, requireAdmin, [
     param('id').isUUID().withMessage('Invalid job ID format'),
     handleValidationErrors
-  ], async (req: Request, res: Response) => {
+  ], async (req: AuthRequest, res: Response) => {
     try {
       const deleted = await storage.deleteJob(req.params.id);
       if (!deleted) {
@@ -404,28 +244,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Stats endpoint
   app.get("/api/stats", async (req, res) => {
     try {
       const stats = await storage.getJobStats();
       const sources = await storage.getScrapingSources();
       const activeSources = sources.filter(s => s.isActive).length;
-      
-      res.json({
-        ...stats,
-        activeSources
-      });
+      res.json({ ...stats, activeSources });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch stats" });
     }
   });
 
-  // Scraping endpoints
-  app.post("/api/scrape/run", [
+  app.get("/api/sources", async (req: Request, res: Response) => {
+    try {
+      const sources = await storage.getScrapingSources();
+      res.json(sources);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch sources" });
+    }
+  });
+
+  app.post("/api/sources", requireAuth, requireAdmin, [
+    body('name').isString().trim().isLength({ min: 1, max: 100 }).escape(),
+    body('type').isString().trim().escape(),
+    body('url').optional().isURL(),
+    body('isActive').optional().isBoolean(),
+    body('config').optional().isObject(),
+    handleValidationErrors
+  ], async (req: AuthRequest, res: Response) => {
+    try {
+      const validatedData = insertScrapingSourceSchema.parse(req.body);
+      const source = await storage.createScrapingSource(validatedData);
+      res.status(201).json(source);
+    } catch (error) {
+      res.status(400).json({ message: "Invalid source data", error });
+    }
+  });
+
+  app.patch("/api/sources/:id", requireAuth, requireAdmin, [
+    param('id').isUUID().withMessage('Invalid source ID format'),
+    body('name').optional().isString().trim().isLength({ min: 1, max: 100 }).escape(),
+    body('isActive').optional().isBoolean(),
+    body('config').optional().isObject(),
+    handleValidationErrors
+  ], async (req: AuthRequest, res: Response) => {
+    try {
+      const source = await storage.updateScrapingSource(req.params.id, req.body);
+      if (!source) {
+        return res.status(404).json({ message: "Source not found" });
+      }
+      res.json(source);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update source" });
+    }
+  });
+
+  app.get("/api/logs/scraping", async (req: Request, res: Response) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const logs = await storage.getScrapingLogs(limit);
+      res.json(logs);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch scraping logs" });
+    }
+  });
+
+  app.get("/api/logs/kaza", async (req: Request, res: Response) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 50;
+      const logs = await storage.getKazaConnectLogs(limit);
+      res.json(logs);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch KazaConnect logs" });
+    }
+  });
+
+  app.post("/api/scrape/run", requireAuth, requireAdmin, [
     scrapingLimiter,
     body('maxJobs').optional().isInt({ min: 1, max: 100 }).withMessage('maxJobs must be between 1 and 100'),
     handleValidationErrors
-  ], async (req: Request, res: Response) => {
+  ], async (req: AuthRequest, res: Response) => {
     try {
       const { maxJobs = 50 } = req.body;
       jobScraperService.runScraping(maxJobs);
@@ -444,69 +342,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/scraping/sources", async (req, res) => {
-    try {
-      const sources = await storage.getScrapingSources();
-      res.json(sources);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch sources" });
-    }
-  });
-
-  app.post("/api/scraping/sources", async (req, res) => {
-    try {
-      const validatedData = insertScrapingSourceSchema.parse(req.body);
-      const source = await storage.createScrapingSource(validatedData);
-      res.status(201).json(source);
-    } catch (error) {
-      res.status(400).json({ message: "Invalid source data", error });
-    }
-  });
-
-  app.patch("/api/scraping/sources/:id", async (req, res) => {
-    try {
-      const source = await storage.updateScrapingSource(req.params.id, req.body);
-      if (!source) {
-        return res.status(404).json({ message: "Source not found" });
-      }
-      res.json(source);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update source" });
-    }
-  });
-
-  // Logs endpoints
-  app.get("/api/logs/scraping", async (req, res) => {
-    try {
-      const { limit = 50 } = req.query;
-      const logs = await storage.getScrapingLogs(parseInt(limit as string));
-      res.json(logs);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch scraping logs" });
-    }
-  });
-
-  app.get("/api/logs/kaza-connect", async (req, res) => {
-    try {
-      const { limit = 50 } = req.query;
-      const logs = await storage.getKazaConnectLogs(parseInt(limit as string));
-      res.json(logs);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch KazaConnect logs" });
-    }
-  });
-
-  // KazaConnect integration endpoints
-  app.post("/api/kaza-connect/post/:jobId", [
+  app.post("/api/kaza/post/:jobId", requireAuth, requireAdmin, [
     param('jobId').isUUID().withMessage('Invalid job ID format'),
     handleValidationErrors
-  ], async (req: Request, res: Response) => {
+  ], async (req: AuthRequest, res: Response) => {
     try {
       const job = await storage.getJob(req.params.jobId);
       if (!job) {
         return res.status(404).json({ message: "Job not found" });
       }
-      
       const result = await kazaConnectService.postJob(job);
       res.json(result);
     } catch (error) {
@@ -514,26 +358,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/kaza-connect/bulk-post", [
-    body('jobIds').isArray({ min: 1, max: 50 }).withMessage('jobIds must be an array with 1-50 items'),
-    body('jobIds.*').isUUID().withMessage('Each job ID must be a valid UUID'),
-    handleValidationErrors
-  ], async (req: Request, res: Response) => {
-    try {
-      const { jobIds } = req.body;
-      if (!Array.isArray(jobIds)) {
-        return res.status(400).json({ message: "jobIds must be an array" });
-      }
-
-      const results = await kazaConnectService.bulkPostJobs(jobIds);
-      res.json(results);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to bulk post jobs" });
-    }
-  });
-
-  // Scheduler endpoints
-  app.post("/api/scheduler/start", async (req, res) => {
+  app.post("/api/scheduler/start", requireAuth, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       schedulerService.start();
       res.json({ message: "Scheduler started" });
@@ -542,7 +367,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/scheduler/stop", async (req, res) => {
+  app.post("/api/scheduler/stop", requireAuth, requireAdmin, async (req: AuthRequest, res: Response) => {
     try {
       schedulerService.stop();
       res.json({ message: "Scheduler stopped" });
@@ -551,7 +376,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/scheduler/status", async (req, res) => {
+  app.get("/api/scheduler/status", async (req: Request, res: Response) => {
     try {
       const status = schedulerService.getStatus();
       res.json(status);
@@ -560,115 +385,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // User profile endpoints
-  app.get("/api/users/:id", [
-    param('id').isString().trim(),
-    handleValidationErrors
-  ], async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-      const user = await storage.getUser(id);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      res.json(user);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to fetch user" });
-    }
-  });
-
-  app.patch("/api/users/:id", [
-    param('id').isString().trim(),
-    body('fullName').optional().isString().trim(),
-    body('email').optional().isEmail(),
-    body('militaryBranch').optional().isString().trim(),
-    body('yearsOfService').optional().isInt({ min: 0, max: 50 }),
-    body('skills').optional().isArray(),
-    body('desiredJobTypes').optional().isArray(),
-    body('desiredLocations').optional().isArray(),
-    body('minSalary').optional().isInt({ min: 0 }),
-    body('clearanceLevel').optional().isString().trim(),
-    handleValidationErrors
-  ], async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-      const updates = req.body;
-      const user = await storage.updateUser(id, updates);
-      if (!user) {
-        return res.status(404).json({ message: "User not found" });
-      }
-      res.json(user);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update user" });
-    }
-  });
-
-  // Job Recommendation endpoints
-  app.get("/api/recommendations/:userId", [
-    param('userId').isString().trim(),
+  app.get("/api/recommendations/:userId", requireAuth, [
+    param('userId').isUUID().withMessage('Invalid user ID format'),
     query('limit').optional().isInt({ min: 1, max: 100 }),
     handleValidationErrors
-  ], async (req: Request, res: Response) => {
+  ], async (req: AuthRequest, res: Response) => {
     try {
-      const { userId } = req.params;
-      const limit = parseInt(req.query.limit as string) || 20;
-      const recommendations = await storage.getRecommendationsForUser(userId, limit);
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 20;
+      const recommendations = await storage.getRecommendationsForUser(req.params.userId, limit);
       res.json(recommendations);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch recommendations" });
     }
   });
 
-  app.post("/api/recommendations/generate/:userId", [
-    param('userId').isString().trim(),
-    body('limit').optional().isInt({ min: 1, max: 100 }),
+  app.post("/api/recommendations/generate/:userId", requireAuth, [
+    param('userId').isUUID().withMessage('Invalid user ID format'),
     handleValidationErrors
-  ], async (req: Request, res: Response) => {
+  ], async (req: AuthRequest, res: Response) => {
     try {
-      const { userId } = req.params;
-      const limit = req.body.limit || 20;
-
-      const user = await storage.getUser(userId);
+      const user = await storage.getUser(req.params.userId);
       if (!user) {
         return res.status(404).json({ message: "User not found" });
       }
-
-      // Get all available jobs
-      const jobs = await storage.getJobs({ limit: 1000 });
-
-      // Generate recommendations
-      const recommendations = await JobMatchingService.generateRecommendationsForUser(
-        user,
-        jobs,
-        limit
-      );
-
-      // Save recommendations to database
-      const savedRecommendations = await storage.createRecommendations(recommendations);
-
-      res.json({
-        message: `Generated ${savedRecommendations.length} recommendations`,
-        recommendations: savedRecommendations
-      });
+      const jobs = await storage.getJobs({ limit: 100 });
+      const recommendations = await JobMatchingService.generateRecommendationsForUser(user, jobs);
+      const created = await storage.createRecommendations(recommendations);
+      res.json({ message: "Recommendations generated", count: created.length });
     } catch (error) {
-      console.error("Error generating recommendations:", error);
       res.status(500).json({ message: "Failed to generate recommendations" });
     }
   });
 
-  app.patch("/api/recommendations/:id/dismiss", [
-    param('id').isString().trim(),
+  app.patch("/api/recommendations/:id/dismiss", requireAuth, [
+    param('id').isUUID().withMessage('Invalid recommendation ID format'),
     handleValidationErrors
-  ], async (req: Request, res: Response) => {
+  ], async (req: AuthRequest, res: Response) => {
     try {
-      const { id } = req.params;
-      const success = await storage.dismissRecommendation(id);
-      if (!success) {
+      const dismissed = await storage.dismissRecommendation(req.params.id);
+      if (!dismissed) {
         return res.status(404).json({ message: "Recommendation not found" });
       }
       res.json({ message: "Recommendation dismissed" });
     } catch (error) {
       res.status(500).json({ message: "Failed to dismiss recommendation" });
+    }
+  });
+
+  app.get("/api/admin/users", requireAuth, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      const users = await storage.getAllUsers();
+      const safeUsers = users.map(({ passwordHash, ...user }) => user);
+      res.json(safeUsers);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch users" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/activate", requireAuth, requireAdmin, [
+    param('id').isUUID().withMessage('Invalid user ID format'),
+    handleValidationErrors
+  ], async (req: AuthRequest, res: Response) => {
+    try {
+      const activated = await storage.activateUser(req.params.id);
+      if (!activated) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json({ message: "User activated" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to activate user" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/deactivate", requireAuth, requireAdmin, [
+    param('id').isUUID().withMessage('Invalid user ID format'),
+    handleValidationErrors
+  ], async (req: AuthRequest, res: Response) => {
+    try {
+      const deactivated = await storage.deactivateUser(req.params.id);
+      if (!deactivated) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json({ message: "User deactivated" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to deactivate user" });
     }
   });
 

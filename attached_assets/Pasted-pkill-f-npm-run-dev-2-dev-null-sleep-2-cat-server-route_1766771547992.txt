@@ -1,0 +1,304 @@
+pkill -f "npm run dev" 2>/dev/null; sleep 2; cat > server/routes-login-fix.tmp << 'EOF'
+import type { Express, Request, Response, NextFunction } from "express";
+import { createServer, type Server } from "http";
+import rateLimit from "express-rate-limit";
+import slowDown from "express-slow-down";
+import helmet from "helmet";
+import cors from "cors";
+import { body, param, query, validationResult } from "express-validator";
+import { storage } from "./storage";
+import { jobScraperService } from "./services/jobScraper";
+import { kazaConnectService } from "./services/kazaConnectApi";
+import { schedulerService } from "./services/scheduler";
+import { insertJobSchema, insertScrapingSourceSchema, insertUserSchema } from "@shared/schema";
+import { JobMatchingService } from "./services/job-matching";
+import { requireAuth, requireAdmin, generateToken, hashPassword, comparePassword, type AuthRequest } from "./auth";
+import path from "path";
+
+const securityLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  message: { error: "Too many requests, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const scrapingLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 5,
+  message: { error: "Scraping rate limit exceeded, please wait before trying again" },
+});
+
+const speedLimiter = slowDown({
+  windowMs: 15 * 60 * 1000,
+  delayAfter: 500,
+  delayMs: () => 100,
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many authentication attempts' },
+});
+
+const corsOptions = {
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || [
+    'http://localhost:5000',
+    'http://localhost:3000',
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+};
+
+const handleValidationErrors = (req: Request, res: Response, next: NextFunction) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ 
+      error: "Validation failed", 
+      details: errors.array() 
+    });
+  }
+  next();
+};
+
+export async function registerRoutes(app: Express): Promise<Server> {
+  app.use(cors(corsOptions));
+  
+  app.get("/api/download-project", (req: Request, res: Response) => {
+    const zipPath = path.join(process.cwd(), "project-export.zip");
+    res.download(zipPath, "project-export.zip", (err) => {
+      if (err) {
+        res.status(404).json({ error: "File not found" });
+      }
+    });
+  });
+
+  app.use(helmet({
+    contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com"],
+        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'"],
+      },
+    } : false,
+  }));
+  app.use(securityLimiter);
+  app.use(speedLimiter);
+
+  app.post("/api/auth/register", [
+    authLimiter,
+    body('username').trim().isLength({ min: 3, max: 50 }).isAlphanumeric(),
+    body('email').isEmail().normalizeEmail(),
+    body('password').isLength({ min: 8, max: 100 }).matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).withMessage('Password must contain uppercase, lowercase, and number'),
+    body('fullName').optional().trim().isLength({ max: 255 }).escape(),
+    handleValidationErrors,
+  ], async (req: Request, res: Response) => {
+    try {
+      const { username, email, password, fullName } = req.body;
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ error: 'Email already registered' });
+      }
+      const existingUsername = await storage.getUserByUsername(username);
+      if (existingUsername) {
+        return res.status(400).json({ error: 'Username already taken' });
+      }
+      const password_hash = await hashPassword(password);
+      const allUsers = await storage.getAllUsers?.() || [];
+      const role = allUsers.length === 0 ? 'admin' : 'user';
+      const user = await storage.createUserWithHash({ username, email, password_hash, fullName, role });
+      const token = generateToken({ id: user.id, username: user.username, email: user.email!, role: user.role as 'admin' | 'user' });
+      res.status(201).json({ message: 'Registration successful', user: { id: user.id, username: user.username, email: user.email, role: user.role }, token });
+    } catch (error) {
+      console.error('Registration error:', error);
+      res.status(500).json({ error: 'Registration failed' });
+    }
+  });
+
+  app.post("/api/auth/login", [
+    authLimiter,
+    body('email').isEmail().normalizeEmail(),
+    body('password').notEmpty(),
+    handleValidationErrors,
+  ], async (req: Request, res: Response) => {
+    try {
+      const { email, password } = req.body;
+      const user = await storage.getUserByEmail(email);
+      if (!user || !user.passwordHash) {
+        return res.status(401).json({ error: 'Invalid email or password' });
+      }
+      const isValidPassword = await comparePassword(password, user.passwordHash);
+      if (!isValidPassword) {
+        return res.status(401).json({ error: 'Invalid email or password' });
+      }
+      if (!user.isActive) {
+        return res.status(403).json({ error: 'Account is inactive' });
+      }
+      await storage.updateUserLastLogin(user.id);
+      const token = generateToken({ id: user.id, username: user.username, email: user.email!, role: user.role as 'admin' | 'user' });
+      res.json({ message: 'Login successful', user: { id: user.id, username: user.username, email: user.email, role: user.role, fullName: user.fullName }, token });
+    } catch (error) {
+      console.error('Login error:', error);
+      res.status(500).json({ error: 'Login failed' });
+    }
+  });
+
+  app.get("/api/auth/me", requireAuth, (req: AuthRequest, res: Response) => {
+    res.json({ user: req.user });
+  });
+
+  app.post("/api/auth/logout", requireAuth, (req: AuthRequest, res: Response) => {
+    res.json({ message: 'Logout successful' });
+  });
+
+  app.get("/api/jobs", [
+    query('source').optional().isString().trim().escape(),
+    query('status').optional().isString().trim().escape(),
+    query('veteranOnly').optional().isBoolean(),
+    query('limit').optional().isInt({ min: 1, max: 1000 }),
+    query('offset').optional().isInt({ min: 0 }),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const { source, status, veteranOnly, limit, offset } = req.query;
+      const jobs = await storage.getJobs({
+        source: source as string,
+        status: status as string,
+        veteranOnly: veteranOnly === 'true',
+        limit: limit ? parseInt(limit as string) : undefined,
+        offset: offset ? parseInt(offset as string) : undefined
+      });
+      res.json(jobs);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch jobs" });
+    }
+  });
+
+  app.get("/api/jobs/:id", [
+    param('id').isUUID().withMessage('Invalid job ID format'),
+    handleValidationErrors
+  ], async (req: Request, res: Response) => {
+    try {
+      const job = await storage.getJob(req.params.id);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+      res.json(job);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch job" });
+    }
+  });
+
+  app.post("/api/jobs", requireAuth, requireAdmin, [
+    body('title').isString().trim().isLength({ min: 1, max: 500 }).escape(),
+    body('company').isString().trim().isLength({ min: 1, max: 200 }).escape(),
+    body('location').isString().trim().isLength({ min: 1, max: 200 }).escape(),
+    body('url').isURL().normalizeEmail(),
+    body('source').isString().trim().escape(),
+    body('description').optional().isString().trim().isLength({ max: 10000 }),
+    body('veteranKeywords').optional().isArray(),
+    handleValidationErrors
+  ], async (req: AuthRequest, res: Response) => {
+    try {
+      const validatedData = insertJobSchema.parse(req.body);
+      const job = await storage.createJob(validatedData);
+      res.status(201).json(job);
+    } catch (error) {
+      res.status(400).json({ message: "Invalid job data", error });
+    }
+  });
+
+  app.patch("/api/jobs/:id", requireAuth, requireAdmin, [
+    param('id').isUUID().withMessage('Invalid job ID format'),
+    body('status').optional().isIn(['pending', 'approved', 'rejected', 'posted', 'failed']),
+    body('title').optional().isString().trim().isLength({ min: 1, max: 500 }).escape(),
+    body('company').optional().isString().trim().isLength({ min: 1, max: 200 }).escape(),
+    handleValidationErrors
+  ], async (req: AuthRequest, res: Response) => {
+    try {
+      const job = await storage.updateJob(req.params.id, req.body);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+      res.json(job);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update job" });
+    }
+  });
+
+  app.delete("/api/jobs/:id", requireAuth, requireAdmin, [
+    param('id').isUUID().withMessage('Invalid job ID format'),
+    handleValidationErrors
+  ], async (req: AuthRequest, res: Response) => {
+    try {
+      const deleted = await storage.deleteJob(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete job" });
+    }
+  });
+
+  app.get("/api/stats", async (req, res) => {
+    try {
+      const stats = await storage.getJobStats();
+      const sources = await storage.getScrapingSources();
+      const activeSources = sources.filter(s => s.isActive).length;
+      res.json({ ...stats, activeSources });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch stats" });
+    }
+  });
+
+  app.post("/api/scrape/run", requireAuth, requireAdmin, [
+    scrapingLimiter,
+    body('maxJobs').optional().isInt({ min: 1, max: 100 }).withMessage('maxJobs must be between 1 and 100'),
+    handleValidationErrors
+  ], async (req: AuthRequest, res: Response) => {
+    try {
+      const { maxJobs = 50 } = req.body;
+      jobScraperService.runScraping(maxJobs);
+      res.json({ message: "Scraping started" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to start scraping" });
+    }
+  });
+
+  app.get("/api/scrape/status", async (req, res) => {
+    try {
+      const status = jobScraperService.getStatus();
+      res.json(status);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to get scraping status" });
+    }
+  });
+
+  app.post("/api/scheduler/start", requireAuth, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      schedulerService.start();
+      res.json({ message: "Scheduler started" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to start scheduler" });
+    }
+  });
+
+  app.post("/api/scheduler/stop", requireAuth, requireAdmin, async (req: AuthRequest, res: Response) => {
+    try {
+      schedulerService.stop();
+      res.json({ message: "Scheduler stopped" });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to stop scheduler" });
+    }
+  });
+
+  const httpServer = createServer(app);
+  return httpServer;
+}
+EOF
+cp server/routes.ts server/routes.ts.backup 2>/dev/null; mv server/routes-login-fix.tmp server/routes.ts; npm run dev > /tmp/server.log 2>&1 & sleep 6; curl -X POST http://localhost:5000/api/auth/login -H "Content-Type: application/json" -d '{"email":"admin@guineajobs.com","password":"Admin123!ChangeMe"}'; echo ""
