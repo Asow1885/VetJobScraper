@@ -21,7 +21,7 @@ import {
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { eq, desc, and, count, or } from "drizzle-orm";
+import { eq, desc, and, count, or, isNull } from "drizzle-orm";
 
 export interface IStorage {
   // Users
