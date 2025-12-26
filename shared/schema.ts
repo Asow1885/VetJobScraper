@@ -6,9 +6,13 @@ import { z } from "zod";
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  role: varchar("role", { length: 20 }).default("user").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  emailVerified: boolean("email_verified").default(false),
+  lastLogin: timestamp("last_login"),
   fullName: text("full_name"),
-  email: text("email"),
+  email: text("email").unique(),
   militaryBranch: text("military_branch"),
   yearsOfService: integer("years_of_service"),
   skills: text("skills").array(),
@@ -88,8 +92,10 @@ export const jobRecommendations = pgTable("job_recommendations", {
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
+  passwordHash: true,
   createdAt: true,
   updatedAt: true,
+  lastLogin: true,
 });
 
 export const insertJobSchema = createInsertSchema(jobs).omit({
