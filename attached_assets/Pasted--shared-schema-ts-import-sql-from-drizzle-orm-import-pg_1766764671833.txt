@@ -1,0 +1,62 @@
+// shared/schema.ts
+import { sql } from "drizzle-orm";
+import { pgTable, text, varchar, timestamp, integer, boolean, jsonb } from "drizzle-orm/pg-core";
+import { createInsertSchema } from "drizzle-zod";
+import { z } from "zod";
+
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), // ⚠️ Make sure it's "sql" not "sq"
+  username: text("username").notNull().unique(),
+  
+  // 🔒 CHANGED: password → password_hash
+  password_hash: varchar("password_hash", { length: 255 }).notNull(),
+  
+  // 🔒 NEW: Add role and security fields
+  role: varchar("role", { length: 20 }).default("user").notNull(), // 'admin' or 'user'
+  is_active: boolean("is_active").default(true).notNull(),
+  email_verified: boolean("email_verified").default(false),
+  last_login: timestamp("last_login"),
+  
+  // Keep existing fields
+  fullName: text("full_name"),
+  email: text("email").unique(),
+  militaryBranch: text("military_branch"),
+  yearsOfService: integer("years_of_service"),
+  skills: text("skills").array(),
+  desiredJobTypes: text("desired_job_types").array(),
+  desiredLocations: text("desired_locations").array(),
+  minSalary: integer("min_salary"),
+  clearanceLevel: text("clearance_level"),
+  preferences: jsonb("preferences"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Update insert schema
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  password_hash: true,
+  createdAt: true,
+  updatedAt: true,
+  last_login: true,
+});
+
+// Create registration schema
+export const registerUserSchema = z.object({
+  username: z.string().min(3).max(50),
+  email: z.string().email(),
+  password: z.string().min(8).max(100)
+    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 
+      'Password must contain uppercase, lowercase, and number'),
+  fullName: z.string().optional(),
+});
+
+// Create login schema
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string(),
+});
+
+// Keep all other tables (jobs, scrapingSources, etc.) as they are
+// ... rest of schema.ts remains the same

@@ -105,6 +105,20 @@ export const createUserSchema = createInsertSchema(users).omit({
   lastLogin: true,
 });
 
+export const registerUserSchema = z.object({
+  username: z.string().min(3).max(50),
+  email: z.string().email(),
+  password: z.string().min(8).max(100)
+    .regex(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, 
+      'Password must contain uppercase, lowercase, and number'),
+  fullName: z.string().optional(),
+});
+
+export const loginSchema = z.object({
+  email: z.string().email(),
+  password: z.string(),
+});
+
 export const insertJobSchema = createInsertSchema(jobs).omit({
   id: true,
   scrapedDate: true,
