@@ -1,0 +1,81 @@
+class MemStorage implements IStorage {
+  // ... existing methods ...
+  
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(u => u.email === email);
+  }
+  
+  async getUserByUsernameOrEmail(usernameOrEmail: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(
+      u => u.username === usernameOrEmail || u.email === usernameOrEmail
+    );
+  }
+  
+  async updateUserLastLogin(id: string): Promise<void> {
+    const user = this.users.get(id);
+    if (user) {
+      user.last_login = new Date();
+      user.updatedAt = new Date();
+      this.users.set(id, user);
+    }
+  }
+  
+  async createUserWithHash(data: any): Promise<User> {
+    const user: User = {
+      id: randomUUID(),
+      username: data.username,
+      email: data.email,
+      password_hash: data.password_hash,
+      fullName: data.fullName || null,
+      role: data.role || 'user',
+      is_active: true,
+      email_verified: false,
+      last_login: null,
+      militaryBranch: null,
+      yearsOfService: null,
+      skills: null,
+      desiredJobTypes: null,
+      desiredLocations: null,
+      minSalary: null,
+      clearanceLevel: null,
+      preferences: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.users.set(user.id, user);
+    return user;
+  }
+  
+  async deactivateUser(id: string): Promise<boolean> {
+    const user = this.users.get(id);
+    if (user) {
+      user.is_active = false;
+      user.updatedAt = new Date();
+      this.users.set(id, user);
+      return true;
+    }
+    return false;
+  }
+  
+  async activateUser(id: string): Promise<boolean> {
+    const user = this.users.get(id);
+    if (user) {
+      user.is_active = true;
+      user.updatedAt = new Date();
+      this.users.set(id, user);
+      return true;
+    }
+    return false;
+  }
+  
+  async getAllUsers(): Promise<User[]> {
+    return Array.from(this.users.values())
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+  
+  async getUserCount(): Promise<number> {
+    return this.users.size;
+  }
+  
+  // ... rest of existing methods ...
+}

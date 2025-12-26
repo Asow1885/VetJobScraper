@@ -252,6 +252,7 @@ export class MemStorage implements IStorage {
     const user = this.users.get(id);
     if (user) {
       user.lastLogin = new Date();
+      user.updatedAt = new Date();
       this.users.set(id, user);
     }
   }
@@ -275,7 +276,12 @@ export class MemStorage implements IStorage {
   }
 
   async getAllUsers(): Promise<User[]> {
-    return Array.from(this.users.values());
+    return Array.from(this.users.values())
+      .sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
   }
 
   async getUserCount(): Promise<number> {
