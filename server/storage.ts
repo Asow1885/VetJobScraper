@@ -21,7 +21,7 @@ import {
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./db";
-import { eq, desc, and, count } from "drizzle-orm";
+import { eq, desc, and, count, or } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -559,15 +559,36 @@ export class DbStorage implements IStorage {
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const result = await db.select().from(users).where(eq(users.email, email));
-    return result[0];
+    try {
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+      return user;
+    } catch (error) {
+      console.error('Error fetching user by email:', error);
+      return undefined;
+    }
   }
 
   async getUserByUsernameOrEmail(usernameOrEmail: string): Promise<User | undefined> {
-    const byUsername = await db.select().from(users).where(eq(users.username, usernameOrEmail));
-    if (byUsername[0]) return byUsername[0];
-    const byEmail = await db.select().from(users).where(eq(users.email, usernameOrEmail));
-    return byEmail[0];
+    try {
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(
+          or(
+            eq(users.username, usernameOrEmail),
+            eq(users.email, usernameOrEmail)
+          )
+        )
+        .limit(1);
+      return user;
+    } catch (error) {
+      console.error('Error fetching user:', error);
+      return undefined;
+    }
   }
 
   async createUser(insertUser: CreateUser): Promise<User> {
@@ -582,16 +603,24 @@ export class DbStorage implements IStorage {
     fullName?: string;
     role?: string;
   }): Promise<User> {
-    const result = await db.insert(users).values({
-      username: data.username,
-      email: data.email,
-      passwordHash: data.password_hash,
-      fullName: data.fullName || null,
-      role: data.role || 'user',
-      isActive: true,
-      emailVerified: false,
-    }).returning();
-    return result[0];
+    try {
+      const [user] = await db
+        .insert(users)
+        .values({
+          username: data.username,
+          email: data.email,
+          passwordHash: data.password_hash,
+          fullName: data.fullName || null,
+          role: data.role || 'user',
+          isActive: true,
+          emailVerified: false,
+        })
+        .returning();
+      return user;
+    } catch (error) {
+      console.error('Error creating user:', error);
+      throw error;
+    }
   }
 
   async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
@@ -605,26 +634,69 @@ export class DbStorage implements IStorage {
   }
 
   async updateUserLastLogin(id: string): Promise<void> {
-    await db.update(users).set({ lastLogin: new Date() }).where(eq(users.id, id));
+    try {
+      await db
+        .update(users)
+        .set({ 
+          lastLogin: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(users.id, id));
+    } catch (error) {
+      console.error('Error updating last login:', error);
+    }
   }
 
   async deactivateUser(id: string): Promise<boolean> {
-    const result = await db.update(users).set({ isActive: false, updatedAt: new Date() }).where(eq(users.id, id));
-    return (result.rowCount ?? 0) > 0;
+    try {
+      const [updated] = await db
+        .update(users)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(eq(users.id, id))
+        .returning();
+      return !!updated;
+    } catch (error) {
+      console.error('Error deactivating user:', error);
+      return false;
+    }
   }
 
   async activateUser(id: string): Promise<boolean> {
-    const result = await db.update(users).set({ isActive: true, updatedAt: new Date() }).where(eq(users.id, id));
-    return (result.rowCount ?? 0) > 0;
+    try {
+      const [updated] = await db
+        .update(users)
+        .set({ isActive: true, updatedAt: new Date() })
+        .where(eq(users.id, id))
+        .returning();
+      return !!updated;
+    } catch (error) {
+      console.error('Error activating user:', error);
+      return false;
+    }
   }
 
   async getAllUsers(): Promise<User[]> {
-    return await db.select().from(users);
+    try {
+      return await db
+        .select()
+        .from(users)
+        .orderBy(desc(users.createdAt));
+    } catch (error) {
+      console.error('Error fetching all users:', error);
+      return [];
+    }
   }
 
   async getUserCount(): Promise<number> {
-    const result = await db.select({ count: count() }).from(users);
-    return result[0]?.count || 0;
+    try {
+      const [result] = await db
+        .select({ count: count() })
+        .from(users);
+      return result?.count || 0;
+    } catch (error) {
+      console.error('Error counting users:', error);
+      return 0;
+    }
   }
 
   // Jobs
