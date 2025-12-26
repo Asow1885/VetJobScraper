@@ -4,7 +4,7 @@ hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["geckodriver", "glibcLocales", "python311", "python311Packages.pip", "xcodebuild", "zlib", "gcc-unwrapped", "zip"]
+packages = ["geckodriver", "glibcLocales", "python311", "python311Packages.pip", "xcodebuild", "zlib", "gcc-unwrapped", "zip", "imagemagick", "dtools"]
 
 [deployment]
 deploymentTarget = "autoscale"
