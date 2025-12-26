@@ -134,14 +134,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/auth/login", [
     authLimiter,
-    body('username').isString().trim().escape(),
-    body('password').isString(),
+    body('email').isEmail().normalizeEmail(),
+    body('password').notEmpty(),
     handleValidationErrors
   ], async (req: Request, res: Response) => {
     try {
-      const { username, password } = req.body;
+      const { email, password } = req.body;
       
-      const user = await storage.getUserByUsername(username);
+      const user = await storage.getUserByEmail(email);
       if (!user) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
